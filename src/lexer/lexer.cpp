@@ -62,7 +62,7 @@ Lexer::tokenizeNumLit(const char *tokStart) {
     std::string val;
     bool isFirstDigit = true;
     bool hasDot = false;
-    enum {
+    enum : uint8_t {
         Bin,
         Oct,
         Dec,
@@ -369,7 +369,7 @@ Lexer::skipComments() {
 }
 
 std::string 
-Lexer::toUtf8(uint32_t cp) {
+Lexer::toUtf8(uint32_t cp) const {
     std::string result;
     if (cp <= 0x7F) {
         result += static_cast<char>(cp);
