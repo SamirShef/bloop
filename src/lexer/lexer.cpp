@@ -91,16 +91,13 @@ Lexer::tokenizeNumLit(const char *tokStart) {
         }
         if (isFirstDigit && *_curPtr == '0') {
             _curPtr += 2;
-            switch (*(_curPtr - 1)) {
-                case 'b':
+            switch (toupper(*(_curPtr - 1))) {
                 case 'B':
                     kind = Bin;
                     break;
-                case 'o':
                 case 'O':
                     kind = Oct;
                     break;
-                case 'x':
                 case 'X':
                     kind = Hex;
                     break;
@@ -110,7 +107,10 @@ Lexer::tokenizeNumLit(const char *tokStart) {
         }
         if (IS_DIGIT(*_curPtr) || *_curPtr == '.') {
             if (*_curPtr == '.') {
-                if (hasDot || kind != Dec) {
+                if (!isdigit(*(_curPtr + 1))) {
+                    break;
+                }
+                else if (hasDot || kind != Dec) {
                     break;
                 }
                 else {
@@ -190,7 +190,9 @@ Lexer::tokenizeCharLit(const char *tokStart) {
 
     if (*_curPtr == '\'') {
         ++_curPtr;
-        // TODO: create compilation error
+        _diag.Report(Error, "empty character literal")
+            .SetCode("E0001")
+            .AddSpan(LOC1(tokStart), LOC1(_curPtr));
         return TOK(TkUnknown, "", LOC1(tokStart), LOC1(_curPtr));
     }
 
@@ -226,7 +228,11 @@ Lexer::tokenizeCharLit(const char *tokStart) {
         ++_curPtr;  // skip '
     }
     else {
-        // TODO: create compilation error
+        for (; *_curPtr != '\0' && *_curPtr != '\''; ++_curPtr);
+        ++_curPtr;  // skip ' if contains
+        _diag.Report(Error, "a character literal expects a single code point")
+            .SetCode("E0002")
+            .AddSpan(LOC1(tokStart), LOC1(_curPtr));
     }
 
     return TOK(TkCharLit, val, LOC1(tokStart), LOC1(_curPtr));
@@ -363,7 +369,7 @@ Lexer::skipComments() {
 }
 
 std::string 
-toUtf8(uint32_t cp) {
+Lexer::toUtf8(uint32_t cp) {
     std::string result;
     if (cp <= 0x7F) {
         result += static_cast<char>(cp);
@@ -433,7 +439,9 @@ Lexer::getEscapeSecuence(const char *tokStart) {
         }
         default:
             --_curPtr;
-            // TODO: create an compilation error
+            _diag.Report(Error, "invalid escape-sequence")
+                .SetCode("E0003")
+                .AddSpan(LOC1(tokStart), LOC1(_curPtr));
             return { *tokStart };
     }
 }

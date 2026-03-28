@@ -1,4 +1,5 @@
 #pragma once
+#include "diag/engine.h"
 #include <lexer/token.h>
 #include <llvm/Support/SourceMgr.h>
 #include <vector>
@@ -6,11 +7,12 @@
 namespace bloop {
 
 class Lexer {
+    DiagnosticEngine &_diag;
     llvm::SourceMgr &_srcMgr;
     const char *_curPtr;
 
 public:
-    explicit Lexer(llvm::SourceMgr &mgr, unsigned bufferId) : _srcMgr(mgr) {
+    explicit Lexer(DiagnosticEngine &diag, unsigned bufferId) : _diag(diag), _srcMgr(diag.GetSourceMgr()) {
         auto *buf = _srcMgr.getMemoryBuffer(bufferId);
         _curPtr = buf->getBufferStart();
     }
@@ -43,10 +45,11 @@ private:
     void
     skipComments();
 
+    std::string 
+    toUtf8(uint32_t cp);
+    
     std::string
     getEscapeSecuence(const char *tokStart);
-
-    // TODO: add tokenizing of UTF-8 characters in literals
 };
 
 }
