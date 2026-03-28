@@ -12,6 +12,7 @@ main(int argc, char **argv) {
     }
     std::string fileName = argv[1];
     llvm::SourceMgr srcMgr;
+    DiagnosticEngine diag(srcMgr);
 
     auto bufferOrErr = llvm::MemoryBuffer::getFile(fileName);
     if (std::error_code ec = bufferOrErr.getError()) {
@@ -19,9 +20,12 @@ main(int argc, char **argv) {
         return 1;
     }
     unsigned bufferId = srcMgr.AddNewSourceBuffer(std::move(*bufferOrErr), llvm::SMLoc());
-    Lexer lexer(srcMgr, bufferId);
+    Lexer lexer(diag, bufferId);
     std::vector<Token> tokens;
     lexer.TokenizeInto(tokens);
+    if (diag.GetErrorsCount()) {
+        return 1;
+    }
     for (auto t : tokens) {
         llvm::outs() << (uint16_t)t.Kind << '[' << t.Val << "]\n";
     }
