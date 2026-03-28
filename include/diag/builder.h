@@ -17,17 +17,20 @@ public:
     DiagnosticBuilder(DiagnosticBuilder &&) = default;
     ~DiagnosticBuilder();
 
-    DiagnosticBuilder &AddSpan(llvm::SMLoc start, llvm::SMLoc end, std::string label = "") {
+    DiagnosticBuilder &
+    AddSpan(llvm::SMLoc start, llvm::SMLoc end, std::string label = "") {
         _diag.Spans.push_back(DiagnosticSpan(start, end, label));
         return *this;
     }
 
-    DiagnosticBuilder &SetCode(std::string c) {
+    DiagnosticBuilder &
+    SetCode(std::string c) {
         _diag.Code = c;
         return *this;
     }
 
-    DiagnosticBuilder &AddNote(std::string n) {
+    DiagnosticBuilder &
+    AddNote(std::string n) {
         _diag.Notes.push_back(n);
         return *this;
     }

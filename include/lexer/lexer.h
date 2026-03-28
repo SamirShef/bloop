@@ -46,8 +46,8 @@ private:
     skipComments();
 
     std::string 
-    toUtf8(uint32_t cp);
-    
+    toUtf8(uint32_t cp) const;
+
     std::string
     getEscapeSecuence(const char *tokStart);
 };

@@ -11,20 +11,24 @@ class DiagnosticEngine {
 public:
     explicit DiagnosticEngine(llvm::SourceMgr &mgr) : _srcMgr(mgr) {}
 
-    DiagnosticBuilder Report(DiagLevel sev, std::string msg) {
+    DiagnosticBuilder
+    Report(DiagLevel sev, std::string msg) {
         if (sev == DiagLevel::Error) {
             ++_errorsCount;
         }
         return DiagnosticBuilder(*this, sev, msg);
     }
 
-    void Emit(const Diagnostic &diag);
+    void
+    Emit(const Diagnostic &diag);
 
-    unsigned GetErrorsCount() const {
+    unsigned
+    GetErrorsCount() const {
         return _errorsCount;
     }
     
-    llvm::SourceMgr &GetSourceMgr() {
+    llvm::SourceMgr &
+    GetSourceMgr() const {
         return _srcMgr;
     }
 };
