@@ -1,7 +1,29 @@
-#include <iostream>
+#include <lexer/lexer.h>
+#include <llvm/Support/SourceMgr.h>
+#include <llvm/Support/raw_ostream.h>
+
+using namespace bloop;
 
 int
 main(int argc, char **argv) {
-    std::cout << "Hello from Bloop!\n";
+    if (argc != 2) {
+        llvm::errs() << llvm::errs().RED << "Usage: bloop <input_file_path>\n" << llvm::errs().RESET;
+        return 1;
+    }
+    std::string fileName = argv[1];
+    llvm::SourceMgr srcMgr;
+
+    auto bufferOrErr = llvm::MemoryBuffer::getFile(fileName);
+    if (std::error_code ec = bufferOrErr.getError()) {
+        llvm::errs() << llvm::errs().RED << ec.message() << '\n' << llvm::errs().RESET;
+        return 1;
+    }
+    unsigned bufferId = srcMgr.AddNewSourceBuffer(std::move(*bufferOrErr), llvm::SMLoc());
+    Lexer lexer(srcMgr, bufferId);
+    std::vector<Token> tokens;
+    lexer.TokenizeInto(tokens);
+    for (auto t : tokens) {
+        llvm::outs() << (uint16_t)t.Kind << '[' << t.Val << "]\n";
+    }
     return 0;
 }
