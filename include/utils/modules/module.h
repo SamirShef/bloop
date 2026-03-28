@@ -8,14 +8,21 @@
 
 namespace bloop {
 
+#define HASH(t, n) std::unordered_map<std::string, t> n;
+
 struct Module {
-    std::string name;
-    std::unordered_map<std::string, Variable> Vars;
-    std::unordered_map<std::string, FuncOverload> FuncOverloads;
-    std::unordered_map<std::string, Struct> Structs;
-    std::unordered_map<std::string, Trait> Traits;
-    std::unordered_map<std::string, Module *> Submods;
-    std::unordered_map<std::string, Module *> Imports;
+    std::string         Name;
+    AccessModifier      Access;
+    HASH(Variable,      Vars);
+    HASH(FuncOverload,  FuncOverloads);
+    HASH(Struct,        Structs);
+    HASH(Trait,         Traits);
+    HASH(Module *,      Submods);
+    HASH(Module *,      Imports);
+
+    explicit Module(std::string n, AccessModifier a) : Name(n), Access(a) {}
 };
+
+#undef HASH
 
 }

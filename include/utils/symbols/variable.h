@@ -6,11 +6,13 @@
 namespace bloop {
 
 struct Variable {
-    std::string Name;
-    class Type *Type;
-    AccessModifier Access;
+    std::string     Name;
+    class Type     *Type;
+    bool            IsConst;
+    AccessModifier  Access;
+    uint            RefsCount = 0;
 
-    explicit Variable(std::string n, class Type *t, AccessModifier a) : Name(n), Type(t), Access(a) {}
+    explicit Variable(std::string n, class Type *t, bool ic, AccessModifier a) : Name(n), Type(t), IsConst(ic), Access(a) {}
 };
 
 }

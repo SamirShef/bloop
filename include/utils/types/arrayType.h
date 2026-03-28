@@ -5,7 +5,7 @@ namespace bloop {
 
 class ArrayType : public Type {
     Type *_base;
-    // TODO: add size field?
+    // TODO: add `Expr *_size` field
 
 public:
     explicit ArrayType(Type *t) : _base(t), Type(Type::Array) {}
@@ -14,6 +14,8 @@ public:
     GetBaseType() {
         return _base;
     }
+
+    // TODO: add `Expr *GetSize() const;` method
 };
 
 }
