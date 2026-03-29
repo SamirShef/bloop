@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.11)
 project(bloop)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -39,6 +39,16 @@ execute_process(
 
 include_directories(${LLVM_INCLUDE_DIR})
 
+include(FetchContent)
+
+FetchContent_Declare(
+  json
+  GIT_REPOSITORY https://github.com/nlohmann/json.git
+  GIT_TAG v3.11.3
+)
+
+FetchContent_MakeAvailable(json)
+
 file(GLOB_RECURSE SOURCES "src/*.cpp")
 
 add_executable(${PROJECT_NAME} ${SOURCES})
@@ -50,3 +60,4 @@ separate_arguments(LLVM_LDFLAGS)
 separate_arguments(LLVM_CXXFLAGS)
 target_compile_options(${PROJECT_NAME} PRIVATE ${LLVM_CXXFLAGS})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${LLVM_LIBS} ${LLVM_LDFLAGS})
+target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json::nlohmann_json)

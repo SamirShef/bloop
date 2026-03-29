@@ -42,7 +42,7 @@ DiagnosticEngine::Emit(const Diagnostic &diag) {
     os << ": ";
     os.resetColor();
     os.changeColor(llvm::raw_ostream::WHITE, true);
-    os << diag.Message << "\n";
+    os << diag.Message << '\n';
     os.resetColor();
 
     for (const auto &span : diag.Spans) {
@@ -54,7 +54,7 @@ DiagnosticEngine::Emit(const Diagnostic &diag) {
         os << "  --> ";
         os.resetColor();
         os << _srcMgr.getBufferInfo(bufId).Buffer->getBufferIdentifier() 
-           << ":" << lineCol.first << ":" << lineCol.second << "\n";
+           << ":" << lineCol.first << ":" << lineCol.second << '\n';
 
         const char *ptr = span.Start.getPointer();
         const char *bufStart = buf->getBufferStart();
@@ -75,7 +75,7 @@ DiagnosticEngine::Emit(const Diagnostic &diag) {
         os.changeColor(llvm::raw_ostream::CYAN);
         os << gutter;
         os.resetColor();
-        os << lineText << "\n";
+        os << lineText << '\n';
 
         os.changeColor(llvm::raw_ostream::CYAN);
         for (int i = 0; i < gutter.size() - 3; ++i) {
@@ -100,7 +100,7 @@ DiagnosticEngine::Emit(const Diagnostic &diag) {
             os << " " << span.Label;
         }
         os.resetColor();
-        os << "\n";
+        os << '\n';
     }
 
     for (const auto &note : diag.Notes) {
@@ -110,9 +110,9 @@ DiagnosticEngine::Emit(const Diagnostic &diag) {
         os.changeColor(llvm::raw_ostream::WHITE, true);
         os << "note: ";
         os.resetColor();
-        os << note << "\n";
+        os << note << '\n';
     }
-    os << "\n";
+    os << '\n';
 }
 
 }
