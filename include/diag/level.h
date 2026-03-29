@@ -10,4 +10,16 @@ enum DiagLevel : uint8_t {
     Help
 };
 
+enum ErrorCode : uint8_t {
+    ErrEmptyCharLit = 1,
+    ErrLongCharLit,
+    ErrInvalidEscapeSequence,
+    ErrExpectedSemi,
+    ErrExpectedId,
+    ErrExpectedType,
+    ErrExpectedToken,
+    ErrExpectedStmt,
+    ErrExpectedExpr,
+};
+
 }

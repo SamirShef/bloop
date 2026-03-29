@@ -1,13 +1,18 @@
 #pragma once
 #include <cstdint>
+#include <llvm/Support/Casting.h>
+#include <llvm/Support/SMLoc.h>
+#include <string>
 
 namespace bloop {
 
 class Type {
 public:
     enum Kind : uint8_t {
+        Unknown,
         Char,
         Integer,
+        Size,
         Floating,
         Tuple,
         String,
@@ -15,15 +20,33 @@ public:
         Array,
         StructPtr,
         TraitPtr,
-        ModulePtr
+        ModulePtr,
+        Noth
     };
 
 private:
     Kind _kind;
+    llvm::SMLoc _start;
+    llvm::SMLoc _end;
 
 public:
-    explicit Type(Kind k) : _kind(k) {}
+    explicit Type(Type::Kind k, llvm::SMLoc s, llvm::SMLoc e) : _kind(k), _start(s), _end(e) {}
 
+    Kind
+    GetKind() const {
+        return _kind;
+    }
+    
+    llvm::SMLoc
+    GetStartLoc() const {
+        return _start;
+    }
+
+    llvm::SMLoc
+    GetEndLoc() const {
+        return _end;
+    }
+    
     constexpr bool
     Is(Kind k) const {
         return _kind == k;
@@ -78,6 +101,9 @@ public:
     IsModulePtr() const {
         return Is(ModulePtr);
     }
+
+    virtual std::string
+    ToString() = 0;
 };
 
 }

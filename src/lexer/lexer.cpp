@@ -10,13 +10,6 @@
 
 namespace bloop {
 
-void
-Lexer::TokenizeInto(std::vector<Token> &tokens) {
-    while (*_curPtr != '\0') {
-        tokens.push_back(nextTok());
-    }
-}
-
 Token
 Lexer::nextTok() {
     while (isspace(*_curPtr)) {
@@ -191,7 +184,7 @@ Lexer::tokenizeCharLit(const char *tokStart) {
     if (*_curPtr == '\'') {
         ++_curPtr;
         _diag.Report(Error, "empty character literal")
-            .SetCode("E0001")
+            .SetCode(ErrEmptyCharLit)
             .AddSpan(LOC1(tokStart), LOC1(_curPtr));
         return TOK(TkUnknown, "", LOC1(tokStart), LOC1(_curPtr));
     }
@@ -231,7 +224,7 @@ Lexer::tokenizeCharLit(const char *tokStart) {
         for (; *_curPtr != '\0' && *_curPtr != '\''; ++_curPtr);
         ++_curPtr;  // skip ' if contains
         _diag.Report(Error, "a character literal expects a single code point")
-            .SetCode("E0002")
+            .SetCode(ErrLongCharLit)
             .AddSpan(LOC1(tokStart), LOC1(_curPtr));
     }
 
@@ -440,7 +433,7 @@ Lexer::getEscapeSecuence(const char *tokStart) {
         default:
             --_curPtr;
             _diag.Report(Error, "invalid escape-sequence")
-                .SetCode("E0003")
+                .SetCode(ErrInvalidEscapeSequence)
                 .AddSpan(LOC1(tokStart), LOC1(_curPtr));
             return { *tokStart };
     }

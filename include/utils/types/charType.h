@@ -5,7 +5,12 @@ namespace bloop {
 
 class CharType : public Type {
 public:
-    explicit CharType() : Type(Type::Char) {}
+    explicit CharType(llvm::SMLoc s, llvm::SMLoc e) : Type(Type::Char, s ,e) {}
+
+    std::string
+    ToString() override {
+        return "char";
+    }
 };
 
 }

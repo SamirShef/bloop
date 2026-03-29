@@ -5,7 +5,12 @@ namespace bloop {
 
 class StringType : public Type {
 public:
-    explicit StringType() : Type(Type::String) {}
+    explicit StringType(llvm::SMLoc s, llvm::SMLoc e) : Type(Type::String, s, e) {}
+
+    std::string
+    ToString() override {
+        return "string";
+    }
 };
 
 }

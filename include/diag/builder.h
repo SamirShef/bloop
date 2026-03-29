@@ -24,7 +24,7 @@ public:
     }
 
     DiagnosticBuilder &
-    SetCode(std::string c) {
+    SetCode(int c) {
         _diag.Code = c;
         return *this;
     }

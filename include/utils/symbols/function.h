@@ -1,4 +1,6 @@
 #pragma once
+#include <utils/name.h>
+#include <ast/expr.h>
 #include <utils/symbols/access.h>
 #include <utils/types/type.h>
 #include <string>
@@ -7,11 +9,11 @@
 namespace bloop {
 
 struct Argument {
-    std::string Name;
+    NameObj Name;
     class Type *Type;
-    bool        HasDefaultVal;
+    Expr       *DefaultVal;
 
-    explicit Argument(std::string n, class Type *t, bool hdv = false) : Name(n), Type(t), HasDefaultVal(hdv) {}
+    explicit Argument(NameObj n, class Type *t, Expr *dv = nullptr) : Name(n), Type(t), DefaultVal(dv) {}
 };
 
 struct Function {
