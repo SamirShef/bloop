@@ -14,8 +14,8 @@ public:
 
     void
     Delete() override {
-        _lhs->~Expr();
-        _rhs->~Expr();
+        _lhs->Delete();
+        _rhs->Delete();
     }
 
     Expr *

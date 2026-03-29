@@ -21,7 +21,7 @@ public:
     Delete() override {
         delete _retType;
         for (auto &s : _body) {
-            s->~Stmt();
+            s->Delete();
         }
     }
     

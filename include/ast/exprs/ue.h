@@ -13,7 +13,7 @@ public:
 
     void
     Delete() override {
-        _rhs->~Expr();
+        _rhs->Delete();
     }
 
     const Token
