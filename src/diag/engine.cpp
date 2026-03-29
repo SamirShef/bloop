@@ -1,6 +1,7 @@
-#include "diag/engine.h"
+#include <diag/engine.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/MemoryBuffer.h>
+#include <llvm/Support/Format.h>
 #include <algorithm>
 
 namespace bloop {
@@ -29,6 +30,16 @@ getSeverityName(DiagLevel sev) {
     }
 }
 
+static std::string
+getSeverityShortName(DiagLevel sev) {
+    switch (sev) {
+        case DiagLevel::Error:   return "E";
+        case DiagLevel::Warning: return "W";
+        case DiagLevel::Note:    return "N";
+        case DiagLevel::Help:    return "H";
+    }
+}
+
 void
 DiagnosticEngine::Emit(const Diagnostic &diag) {
     auto &os = llvm::errs();
@@ -36,8 +47,8 @@ DiagnosticEngine::Emit(const Diagnostic &diag) {
 
     os.changeColor(color, true);
     os << getSeverityName(diag.Level);
-    if (!diag.Code.empty()) {
-        os << "[" << diag.Code << "]";
+    if (diag.Code != -1) {
+        os << "[" << getSeverityShortName(diag.Level) << llvm::format("%04d", diag.Code) << "]";
     }
     os << ": ";
     os.resetColor();

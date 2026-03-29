@@ -1,0 +1,14 @@
+#pragma once
+#include <utils/types/arrayType.h>
+#include <utils/types/charType.h>
+#include <utils/types/floatingType.h>
+#include <utils/types/integerType.h>
+#include <utils/types/sizeType.h>
+#include <utils/types/moduleType.h>
+#include <utils/types/nothType.h>
+#include <utils/types/pointerType.h>
+#include <utils/types/stringType.h>
+#include <utils/types/structType.h>
+#include <utils/types/traitType.h>
+#include <utils/types/tupleType.h>
+#include <utils/types/unknownNamedType.h>

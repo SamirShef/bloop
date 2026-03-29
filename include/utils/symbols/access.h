@@ -2,7 +2,7 @@
 
 namespace bloop {
 
-enum AccessModifier {
+enum AccessModifier : bool {
     Pub,
     Priv
 };

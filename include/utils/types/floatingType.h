@@ -4,13 +4,17 @@
 namespace bloop {
 
 class FloatingType : public Type {
-    enum FloatingKind {
+public:
+    enum FloatingKind : bool {
         Float,
         Double
-    } _kind;
+    };
+
+private:
+    FloatingKind _kind;
 
 public:
-    explicit FloatingType(FloatingKind k) : _kind(k), Type(Type::Floating) {}
+    explicit FloatingType(FloatingKind k, llvm::SMLoc s, llvm::SMLoc e) : _kind(k), Type(Type::Floating, s, e) {}
 
     bool
     IsFloat() const {
@@ -20,6 +24,11 @@ public:
     bool
     IsDouble() const {
         return _kind == Double;
+    }
+
+    std::string
+    ToString() override {
+        return _kind == Float ? "f32" : "f64";
     }
 };
 

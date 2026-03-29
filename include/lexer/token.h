@@ -9,19 +9,19 @@ enum TokenKind : uint8_t {
     TkId,               // identifier
     TkVar,              // keyword `var`
     TkConst,            // keyword `const`
-    TkBool,             // keyword `bool`
     TkChar,             // keyword `char`
+    TkBool,             // keyword `bool`
     TkI8,               // keyword `i8`
-    TkU8,               // keyword `u8`
     TkI16,              // keyword `i16`
-    TkU16,              // keyword `u16`
     TkI32,              // keyword `i32`
-    TkU32,              // keyword `u32`
     TkI64,              // keyword `i64`
-    TkU64,              // keyword `u64`
     TkI128,             // keyword `i128`
-    TkU128,             // keyword `u128`
     TkISize,            // keyword `isize`
+    TkU8,               // keyword `u8`
+    TkU16,              // keyword `u16`
+    TkU32,              // keyword `u32`
+    TkU64,              // keyword `u64`
+    TkU128,             // keyword `u128`
     TkUSize,            // keyword `usize`
     TkF32,              // keyword `f32`
     TkF64,              // keyword `f64`

@@ -1,21 +1,29 @@
 #pragma once
 #include <utils/types/type.h>
+#include <ast/expr.h>
 
 namespace bloop {
 
 class ArrayType : public Type {
     Type *_base;
-    // TODO: add `Expr *_size` field
+    Expr *_size; // requires inference if nullptr
 
 public:
-    explicit ArrayType(Type *t) : _base(t), Type(Type::Array) {}
+    explicit ArrayType(Type *t, Expr *si, llvm::SMLoc s, llvm::SMLoc e) : _base(t), _size(si), Type(Type::Array, s, e) {}
 
     Type *
-    GetBaseType() {
+    GetBaseType() const {
         return _base;
     }
 
-    // TODO: add `Expr *GetSize() const;` method
+    Expr *GetSize() const {
+        return _size;
+    }
+
+    std::string
+    ToString() override {
+        return '[' + _base->ToString() + ']';
+    }
 };
 
 }

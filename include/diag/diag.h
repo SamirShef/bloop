@@ -8,7 +8,7 @@ namespace bloop {
 
 struct Diagnostic {
     DiagLevel Level;
-    std::string Code;
+    int Code = -1;
     std::string Message;
     std::vector<DiagnosticSpan> Spans;
     std::vector<std::string> Notes;

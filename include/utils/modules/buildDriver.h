@@ -12,7 +12,7 @@ using namespace toml;
 
 namespace bloop {
 
-enum VisitState {
+enum VisitState : uint8_t {
     Unvisited,
     Visiting,
     Visited
@@ -72,7 +72,7 @@ public:
             }
             else {
                 std::cout << "Compiling module: " << name << '\n';
-                if (!compile(node.PhysicalPath, node.Mod)) {
+                if (!Compile(node.PhysicalPath, node.Mod)) {
                     this->~BuildDriver();
                     exit(1);
                 }
@@ -121,19 +121,19 @@ private:
         std::string content((std::istreambuf_iterator<char>(file)),
                              std::istreambuf_iterator<char>());
         
-        std::regex import_regex(R"(using\s+([a-zA-Z0-9_]+(?:\s*\.\s*[a-zA-Z0-9_]+)*))");
+        std::regex importRegex(R"(using\s+([a-zA-Z0-9_]+(?:\s*\.\s*[a-zA-Z0-9_]+)*))");
 
-        auto words_begin = std::sregex_iterator(content.begin(), content.end(), import_regex);
-        auto words_end = std::sregex_iterator();
+        auto wordsBegin = std::sregex_iterator(content.begin(), content.end(), importRegex);
+        auto wordsEnd = std::sregex_iterator();
 
-        for (std::sregex_iterator i = words_begin; i != words_end; ++i) {
-            std::string raw_path = (*i)[1].str();
+        for (std::sregex_iterator i = wordsBegin; i != wordsEnd; ++i) {
+            std::string rawPath = (*i)[1].str();
             
-            raw_path.erase(std::remove_if(raw_path.begin(), raw_path.end(),
+            rawPath.erase(std::remove_if(rawPath.begin(), rawPath.end(),
                                                  [](unsigned char c) { return isspace(c); }),
-                           raw_path.end());
+                           rawPath.end());
             
-            imports.push_back(raw_path);
+            imports.push_back(rawPath);
         }
         
         return imports;

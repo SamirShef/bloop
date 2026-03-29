@@ -1,13 +1,24 @@
 #pragma once
-#include <utils/modules/module.h>
 #include <lexer/lexer.h>
+#include <parser/parser.h>
+#include <utils/astPrinter.h>
+#include <utils/modules/module.h>
 #include <llvm/Support/raw_ostream.h>
 #include <filesystem>
+#include <iostream>
 
 namespace bloop {
 
+static inline void
+deleteAST(std::vector<Stmt *> &ast) {
+    for (auto &s : ast) {
+        s->Delete();
+        delete s;
+    }
+}
+
 inline bool
-compile(const std::filesystem::path &filePath, Module *mod) {
+Compile(const std::filesystem::path &filePath, Module *mod) {
     llvm::SourceMgr srcMgr;
     DiagnosticEngine diag(srcMgr);
 
@@ -20,16 +31,23 @@ compile(const std::filesystem::path &filePath, Module *mod) {
     unsigned bufferId = srcMgr.AddNewSourceBuffer(std::move(*bufferOrErr), llvm::SMLoc());
     Lexer lexer(diag, bufferId);
     std::vector<Token> tokens;
-    
     lexer.TokenizeInto(tokens);
     if (diag.GetErrorsCount() > 0) {
         return false;
     }
 
-    /* llvm::outs() << "Tokens for [" << mod->Name << "]:\n";
-    for (auto t : tokens) {
-        llvm::outs() << "  " << (uint16_t)t.Kind << " [" << t.Val << "]\n";
-    } */
+    Parser parser(diag, tokens);
+    std::vector<Stmt *> ast;
+    parser.ParseInto(ast);
+    if (diag.GetErrorsCount() > 0) {
+        return false;
+    }
+
+    ASTPrinter printer(srcMgr, std::cout);
+    std::cout << '\n';
+    printer.Print(ast, Blue);
+
+    deleteAST(ast);
 
     return true;
 }

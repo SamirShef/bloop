@@ -18,7 +18,11 @@ public:
     }
 
     void
-    TokenizeInto(std::vector<Token> &tokens);
+    TokenizeInto(std::vector<Token> &tokens) {
+        while (*_curPtr != '\0') {
+            tokens.push_back(nextTok());
+        }
+    }
 
 private:
     Token
