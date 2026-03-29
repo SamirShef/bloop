@@ -1,5 +1,6 @@
 #pragma once
 #include <nlohmann/json.hpp>
+#include <toml++/toml.h>
 #include <utils/compiler.h>
 #include <iostream>
 #include <fstream>
@@ -7,6 +8,7 @@
 
 namespace fs = std::filesystem;
 using namespace nlohmann;
+using namespace toml;
 
 namespace bloop {
 
@@ -100,8 +102,11 @@ private:
             this->~BuildDriver();
             exit(1);
         }
-        json toml = json::parse(tomlFile);
-        return { toml["name"], tomlPath.parent_path() / toml["root"].get<std::string>() };
+        table toml = parse_file(tomlPath.string()).table();
+        auto package = toml["package"].as_table();
+        #define AS_STR(v, k) (*v->get_as<std::string>(k))->c_str()
+        return { AS_STR(package, "name"), tomlPath.parent_path() / AS_STR(package, "root") };
+        #undef AS_STR
     }
 
     std::vector<std::string>

@@ -46,8 +46,14 @@ FetchContent_Declare(
   GIT_REPOSITORY https://github.com/nlohmann/json.git
   GIT_TAG v3.11.3
 )
-
 FetchContent_MakeAvailable(json)
+
+FetchContent_Declare(
+    tomlplusplus
+    GIT_REPOSITORY https://github.com/marzer/tomlplusplus.git
+    GIT_TAG v3.4.0
+)
+FetchContent_MakeAvailable(tomlplusplus)
 
 file(GLOB_RECURSE SOURCES "src/*.cpp")
 
@@ -61,3 +67,4 @@ separate_arguments(LLVM_CXXFLAGS)
 target_compile_options(${PROJECT_NAME} PRIVATE ${LLVM_CXXFLAGS})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${LLVM_LIBS} ${LLVM_LDFLAGS})
 target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json::nlohmann_json)
+target_link_libraries(${PROJECT_NAME} PRIVATE tomlplusplus::tomlplusplus)
