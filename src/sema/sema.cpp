@@ -131,12 +131,22 @@ Semantic::analyzeFDS(FuncDeclStmt *fds) {
 
     _funcsRetTypes.push(fds->GetRetType());
     _vars.push({});
+    bool hasRet = false;
     for (auto &s : fds->GetBody()) {
+        if (s->GetKind() == NkRetStmt) {
+            hasRet = true;
+        }
         analyzeStmt(s);
     }
     _vars.pop();
     fds->GetRetType() = _funcsRetTypes.top(); // if type was inferred, then should apply this change
     _funcsRetTypes.pop();
+
+    if (!hasRet && (!fds->GetRetType() || !fds->GetRetType()->IsNothType())) {
+        _diag.Report(Error, "function must return a value in all execution paths")
+            .SetCode(ErrHasntRet)
+            .AddSpan(fds->GetName().Start, fds->GetName().End);
+    }
 }
 
 void
