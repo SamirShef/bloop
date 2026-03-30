@@ -10,11 +10,6 @@ class LiteralExpr : public Expr {
 public:
     explicit LiteralExpr(Value v) : _val(v), Expr(NkLitExpr, v.Start, v.End) {}
 
-    void
-    Delete() override {
-        _val.Delete();
-    }
-
     Value
     GetVal() const {
         return _val;

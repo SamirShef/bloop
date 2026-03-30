@@ -11,6 +11,8 @@ class UnknownNamedType : public Type {
 public:
     explicit UnknownNamedType(NameObj n, llvm::SMLoc s, llvm::SMLoc e) : _name(n), Type(Type::Unknown, s, e) {}
 
+    CLASSOF(Unknown)
+
     NameObj
     GetName() const {
         return _name;

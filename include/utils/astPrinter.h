@@ -72,6 +72,9 @@ private:
     printUS(UsingStmt *us);
 
     void
+    printRS(RetStmt *rs);
+
+    void
     printBE(BinaryExpr *be);
 
     void

@@ -11,8 +11,10 @@ class ArrayType : public Type {
 public:
     explicit ArrayType(Type *t, Expr *si, llvm::SMLoc s, llvm::SMLoc e) : _base(t), _size(si), Type(Type::Array, s, e) {}
 
-    Type *
-    GetBaseType() const {
+    CLASSOF(Array)
+
+    Type *&
+    GetBaseType() {
         return _base;
     }
 

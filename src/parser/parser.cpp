@@ -18,6 +18,7 @@ namespace bloop {
 Stmt *
 Parser::parseStmt(bool consumeSemi) {
     if (peek().Kind == TkEof) {
+        ++_pos;
         return nullptr;
     }
 
@@ -34,6 +35,11 @@ Parser::parseStmt(bool consumeSemi) {
         }
         case TkUsing: {
             Stmt *res = parseUS();
+            EXPECT_SEMI();
+            return res;
+        }
+        case TkRet: {
+            Stmt *res = parseRS();
             EXPECT_SEMI();
             return res;
         }
@@ -130,6 +136,16 @@ Parser::parseUS() {
     return new UsingStmt(path, firstTok.Start, peek().End);
 }
 
+Stmt *
+Parser::parseRS() {
+    const Token firstTok = advance();
+    Expr *expr = nullptr;
+    if (peek().Kind != TkSemi) {
+        expr = parseExpr();
+    }
+    return new RetStmt(expr, firstTok.Start, peek().End);
+}
+
 Expr *
 Parser::parsePrefixExpr(bool allowStruct) {
     const Token tok = advance();
@@ -140,7 +156,7 @@ Parser::parsePrefixExpr(bool allowStruct) {
         #define SIZE_LIT(iu) LIT(SizeType(iu, tok.Start, tok.End), (int64_t)stoll(tok.Val))
 
         case TkBoolLit:
-            return INT_LIT(1, false);
+            return LIT(IntegerType(1, false, tok.Start, tok.End), (int64_t)(tok.Val == "true"));
         case TkCharLit:
             return LIT(CharType(tok.Start, tok.End), tok.Val);
         case TkI16Lit:
@@ -284,7 +300,7 @@ Parser::consumeType() {
                     .SetCode(ErrExpectedToken)
                     .AddSpan(peek().Start, peek().End);
             }
-            return new ArrayType(base, size, c.Start, base->GetEndLoc());
+            return new ArrayType(base, size, c.Start, peek(-1).End);
         }
         case TkLParen: {
             std::vector<Type *> types;
@@ -310,8 +326,8 @@ Parser::consumeType() {
 
 const Token
 Parser::peek(uint rpos) {
-    if (pos + rpos < _tokens.size()) {
-        return _tokens[pos + rpos];
+    if (_pos + rpos < _tokens.size()) {
+        return _tokens[_pos + rpos];
     }
     if (_tokens.size()) {
         auto &srcMgr = _diag.GetSourceMgr();
@@ -324,7 +340,7 @@ Parser::peek(uint rpos) {
 
 const Token
 Parser::advance() {
-    return peek(-pos + pos++);
+    return peek(-_pos + _pos++);
 }
 
 bool

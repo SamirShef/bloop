@@ -20,6 +20,19 @@ enum ErrorCode : uint8_t {
     ErrExpectedToken,
     ErrExpectedStmt,
     ErrExpectedExpr,
+    ErrUnknownType,
+    ErrCannotInferenceType,
+    ErrCannotFindCommonType,
+    ErrCannotApplyOp,
+    ErrCannotGetDefault,
+    ErrUndeclaredVar,
+    ErrRedefinition,
+    ErrCannotImplCast,
+};
+
+enum WarnCode : uint8_t {
+    WarnLostPrecision,
+    WarnLiteralUnderflow,
 };
 
 }

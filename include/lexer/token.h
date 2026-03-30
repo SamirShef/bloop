@@ -75,7 +75,6 @@ enum TokenKind : uint8_t {
     TkColon,            // `:`
     TkEq,               // `=`
     TkBang,             // `!`
-    TkNotEq,            // `!=`
     TkAnd,              // `&`
     TkOr,               // `|`
     TkAndEq,            // `&=`
@@ -97,6 +96,7 @@ enum TokenKind : uint8_t {
     TkLtLtEq,           // `<<=`
     TkGtGtEq,           // `>>=`
     TkEqEq,             // `==`
+    TkNotEq,            // `!=`
     TkLt,               // `<`
     TkGt,               // `>`
     TkLtEq,             // `<=`

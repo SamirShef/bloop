@@ -1,8 +1,10 @@
 #include <diag/engine.h>
+#include <iomanip>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/Format.h>
 #include <algorithm>
+#include <sstream>
 
 namespace bloop {
 
@@ -62,7 +64,7 @@ DiagnosticEngine::Emit(const Diagnostic &diag) {
         auto buf = _srcMgr.getMemoryBuffer(bufId);
         
         os.changeColor(llvm::raw_ostream::CYAN);
-        os << "  --> ";
+        os << "    --> ";
         os.resetColor();
         os << _srcMgr.getBufferInfo(bufId).Buffer->getBufferIdentifier() 
            << ":" << lineCol.first << ":" << lineCol.second << '\n';
@@ -82,14 +84,15 @@ DiagnosticEngine::Emit(const Diagnostic &diag) {
 
         std::string lineText(lineStart, lineEnd - lineStart);
         
-        std::string gutter = std::to_string(lineCol.first) + " | ";
+        std::ostringstream gutter;
+        gutter << std::setw(4) << lineCol.first << " | ";
         os.changeColor(llvm::raw_ostream::CYAN);
-        os << gutter;
+        os << gutter.str();
         os.resetColor();
         os << lineText << '\n';
 
         os.changeColor(llvm::raw_ostream::CYAN);
-        for (int i = 0; i < gutter.size() - 3; ++i) {
+        for (int i = 0; i < gutter.str().size() - 3; ++i) {
             os << " ";
         }
         os << " | ";
@@ -116,12 +119,21 @@ DiagnosticEngine::Emit(const Diagnostic &diag) {
 
     for (const auto &note : diag.Notes) {
         os.changeColor(llvm::raw_ostream::CYAN, true);
-        os << "  = ";
+        os << "     = ";
         os.resetColor();
         os.changeColor(llvm::raw_ostream::WHITE, true);
         os << "note: ";
         os.resetColor();
         os << note << '\n';
+    }
+    for (const auto &help : diag.Helps) {
+        os.changeColor(llvm::raw_ostream::GREEN, true);
+        os << "     = ";
+        os.resetColor();
+        os.changeColor(llvm::raw_ostream::WHITE, true);
+        os << "help: ";
+        os.resetColor();
+        os << help << '\n';
     }
     os << '\n';
 }

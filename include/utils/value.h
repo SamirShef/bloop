@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <utils/types/type.h>
+#include <utils/types/integerType.h>
 #include <variant>
 
 namespace bloop {
@@ -21,9 +22,9 @@ struct Value {
 
     explicit Value(enum Kind k, ValueData d, class Type *t, llvm::SMLoc s, llvm::SMLoc e) : Kind(k), Data(d), Type(t), Start(s), End(e) {}
 
-    void
-    Delete() {
-        delete Type;
+    bool
+    IsUnknown() const {
+        return Kind == Unknown;
     }
 
     std::string
@@ -36,6 +37,11 @@ struct Value {
             case Nil:
                 return "<nil>";
         }
+    }
+
+    static Value
+    GetIncorrectValue() {
+        return Value(Value::Unknown, ValueData(0), new IntegerType(32, false, llvm::SMLoc(), llvm::SMLoc()), llvm::SMLoc(), llvm::SMLoc());
     }
 
 private:

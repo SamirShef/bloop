@@ -7,6 +7,8 @@ class NothType : public Type {
 public:
     explicit NothType(llvm::SMLoc s, llvm::SMLoc e) : Type(Type::Noth, s ,e) {}
 
+    CLASSOF(Noth)
+    
     std::string
     ToString() override {
         return "noth";

@@ -9,8 +9,10 @@ class PointerType : public Type {
 public:
     explicit PointerType(Type *t, llvm::SMLoc s, llvm::SMLoc e) : _base(t), Type(Type::Pointer, s, e) {}
 
-    Type *
-    GetBaseType() const {
+    CLASSOF(Pointer)
+
+    Type *&
+    GetBaseType() {
         return _base;
     }
 

@@ -10,9 +10,6 @@ class UsingStmt : public Stmt {
 public:
     explicit UsingStmt(NameObj p, llvm::SMLoc s, llvm::SMLoc e) : _path(p), Stmt(Pub, NkUsingStmt, s, e) {}
 
-    void
-    Delete() override {}
-
     NameObj
     GetPath() const {
         return _path;

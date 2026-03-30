@@ -16,6 +16,8 @@ private:
 public:
     explicit FloatingType(FloatingKind k, llvm::SMLoc s, llvm::SMLoc e) : _kind(k), Type(Type::Floating, s, e) {}
 
+    CLASSOF(Floating)
+
     bool
     IsFloat() const {
         return _kind == Float;

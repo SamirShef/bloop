@@ -9,6 +9,8 @@ class SizeType : public Type {
 public:
     explicit SizeType(bool iu, llvm::SMLoc s, llvm::SMLoc e) : _isUnsigned(iu), Type(Type::Size, s, e) {}
 
+    CLASSOF(Size)
+
     bool
     IsUnsigned() const {
         return _isUnsigned;
