@@ -13,6 +13,7 @@ ASTPrinter::printNode(Node *node) {
         NODE(NkVarDeclStmt, printVDS, VarDeclStmt);
         NODE(NkFuncDeclStmt, printFDS, FuncDeclStmt);
         NODE(NkUsingStmt, printUS, UsingStmt);
+        NODE(NkRetStmt, printRS, RetStmt);
         NODE(NkBinaryExpr, printBE, BinaryExpr);
         NODE(NkLitExpr, printLE, LiteralExpr);
         NODE(NkUnaryExpr, printUE, UnaryExpr);
@@ -74,6 +75,25 @@ ASTPrinter::printUS(UsingStmt *us) {
     _out << "UsingStmt ";
     printLineCol(us->GetStartLoc());
     _out << " '" << us->GetPath().Name << "'\n";
+    if (!_indent) {
+        _out << '\n';
+    }
+}
+
+void
+ASTPrinter::printRS(RetStmt *rs) {
+    printIndent();
+    _out << "RetStmt ";
+    printLineCol(rs->GetStartLoc());
+    if (rs->GetExpr()) {
+        _out << '\n';
+        ++_indent;
+        printNode(rs->GetExpr());
+        --_indent;
+    }
+    else {
+        _out << '\n';
+    }
     if (!_indent) {
         _out << '\n';
     }

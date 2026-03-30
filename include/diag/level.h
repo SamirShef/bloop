@@ -27,6 +27,7 @@ enum ErrorCode : uint8_t {
     ErrCannotGetDefault,
     ErrUndeclaredVar,
     ErrRedefinition,
+    ErrCannotImplCast,
 };
 
 enum WarnCode : uint8_t {

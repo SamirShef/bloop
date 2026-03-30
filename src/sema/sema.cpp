@@ -15,6 +15,7 @@ Semantic::analyzeStmt(Stmt *stmt) {
         NODE(NkVarDeclStmt, analyzeVDS, VarDeclStmt);
         NODE(NkFuncDeclStmt, analyzeFDS, FuncDeclStmt);
         NODE(NkUsingStmt, analyzeUS, UsingStmt);
+        NODE(NkRetStmt, analyzeRS, RetStmt);
     }
     #undef NODE
 }
@@ -141,6 +142,30 @@ Semantic::analyzeFDS(FuncDeclStmt *fds) {
 void
 Semantic::analyzeUS(UsingStmt *us) {
     // TODO: implement
+}
+
+void
+Semantic::analyzeRS(RetStmt *rs) {
+    if (rs->GetExpr()) {
+        Value val = analyzeExpr(rs->GetExpr());
+        if (!_funcsRetTypes.top()) {
+            _funcsRetTypes.top() = val.Type;
+        }
+        else {
+            implicitlyCast(val, &_funcsRetTypes.top());
+        }
+    }
+    else {
+        if (!_funcsRetTypes.top()) {
+            _funcsRetTypes.top() = new NothType(llvm::SMLoc(), llvm::SMLoc());
+        }
+        else {
+            _diag.Report(Error, "cannot implicitly cast 'noth' to '" + _funcsRetTypes.top()->ToString() + "'")
+                .SetCode(ErrCannotImplCast)
+                .AddSpan(rs->GetStartLoc(), rs->GetEndLoc())
+                .AddHelp("сonsider using an explicit cast");
+        }
+    }
 }
 
 Value
@@ -459,6 +484,60 @@ Semantic::getCommonTypeForOp(Type *lhs, Type *rhs, const Token op, llvm::SMLoc s
         .SetCode(ErrCannotApplyOp)
         .AddSpan(s == llvm::SMLoc() ? lhs->GetStartLoc() : s, e == llvm::SMLoc() ? rhs->GetEndLoc() : e);
     return lhs;
+}
+
+Value
+Semantic::implicitlyCast(Value val, Type **expectedType) {
+    resolveType(&val.Type);
+    resolveType(expectedType);
+    
+    Type *src = val.Type;
+    Type *dst = *expectedType;
+    if (src == dst) {
+        return val;
+    }
+
+    if (src->IsInteger() && dst->IsInteger()) {
+        auto *srcI = src->AsInteger();
+        auto *dstI = dst->AsInteger();
+
+        if (dstI->GetBitWidth() >= srcI->GetBitWidth()) {
+            if (srcI->IsUnsigned() == dstI->IsUnsigned() || dstI->GetBitWidth() > srcI->GetBitWidth()) {
+                val.Type = dst;
+                return val;
+            }
+        }
+    }
+
+    if (src->IsFloating() && dst->IsFloating()) {
+        auto *srcF = src->AsFloating();
+        auto *dstF = dst->AsFloating();
+
+        if (dstF->IsDouble() && srcF->IsFloat()) {
+            val.Type = dst;
+            if (val.Kind == Value::Const) {
+                double d = std::get<1>(val.Data); 
+                val.Data = ValueData(d);
+            }
+            return val;
+        }
+    }
+
+    if (src->IsInteger() && dst->IsFloating()) {
+        val.Type = dst;
+        if (val.Kind == Value::Const) {
+            double d = static_cast<double>(std::get<0>(val.Data));
+            val.Data = ValueData(d);
+        }
+        return val;
+    }
+
+    _diag.Report(Error, "cannot implicitly cast '" + src->ToString() + "' to '" + dst->ToString() + "'")
+        .SetCode(ErrCannotImplCast)
+        .AddSpan(val.Start, val.End)
+        .AddHelp("сonsider using an explicit cast");
+
+    return Value::GetIncorrectValue();
 }
 
 }

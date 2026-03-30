@@ -38,6 +38,11 @@ Parser::parseStmt(bool consumeSemi) {
             EXPECT_SEMI();
             return res;
         }
+        case TkRet: {
+            Stmt *res = parseRS();
+            EXPECT_SEMI();
+            return res;
+        }
     }
     const Token tok = advance();
     _diag.Report(Error, "expected statement")
@@ -129,6 +134,16 @@ Parser::parseUS() {
     }
     path.End = peek(-1).End;
     return new UsingStmt(path, firstTok.Start, peek().End);
+}
+
+Stmt *
+Parser::parseRS() {
+    const Token firstTok = advance();
+    Expr *expr = nullptr;
+    if (peek().Kind != TkSemi) {
+        expr = parseExpr();
+    }
+    return new RetStmt(expr, firstTok.Start, peek().End);
 }
 
 Expr *

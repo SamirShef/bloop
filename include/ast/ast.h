@@ -2,6 +2,7 @@
 #include <ast/stmts/fds.h>
 #include <ast/stmts/us.h>
 #include <ast/stmts/vds.h>
+#include <ast/stmts/rs.h>
 
 #include <ast/exprs/be.h>
 #include <ast/exprs/le.h>

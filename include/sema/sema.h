@@ -40,6 +40,9 @@ private:
     void
     analyzeUS(UsingStmt *us);
 
+    void
+    analyzeRS(RetStmt *rs);
+
     Value
     analyzeExpr(Expr *expr);
 
@@ -75,6 +78,9 @@ private:
 
     Type *
     getCommonTypeForOp(Type *lhs, Type *rhs, const Token op, llvm::SMLoc s = llvm::SMLoc(), llvm::SMLoc e = llvm::SMLoc());
+
+    Value
+    implicitlyCast(Value val, Type **expectedType);
 };
 
 }

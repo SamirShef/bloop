@@ -38,6 +38,9 @@ private:
     Stmt *
     parseUS();
 
+    Stmt *
+    parseRS();
+    
     Expr *
     parsePrefixExpr(bool allowStruct = true);
 
