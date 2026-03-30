@@ -74,7 +74,7 @@ Semantic::analyzeVDS(VarDeclStmt *vds) {
         varsCopy.pop();
     }
 
-    Variable var(vds->GetName(), vds->GetType(), vds->IsConst(), vds->GetAccess(), val);
+    Variable var(vds->GetName(), vds->GetType(), vds->IsConst(), vds->GetAccess(), val, _vars.size() == 1 ? Static : Stack);
     if (_vars.size() == 1) {
         _mod->Vars.emplace(vds->GetName().Name, var);
     }
@@ -126,17 +126,27 @@ Semantic::analyzeFDS(FuncDeclStmt *fds) {
         _mod->FuncOverloads.emplace(fds->GetName().Name, FuncOverload());
         candidates = &_mod->FuncOverloads.at(fds->GetName().Name);
     }
-    Function func(fds->GetName(), fds->GetRetType(), fds->GetArgs(), fds->GetAccess());
+    Function func(fds->GetName(), fds->GetRetType(), fds->GetArgs(), fds->GetAccess(), Static);
     candidates->Candidates.push_back(func);
 
     _funcsRetTypes.push(fds->GetRetType());
     _vars.push({});
+    bool hasRet = false;
     for (auto &s : fds->GetBody()) {
+        if (s->GetKind() == NkRetStmt) {
+            hasRet = true;
+        }
         analyzeStmt(s);
     }
     _vars.pop();
     fds->GetRetType() = _funcsRetTypes.top(); // if type was inferred, then should apply this change
     _funcsRetTypes.pop();
+
+    if (!hasRet && (!fds->GetRetType() || !fds->GetRetType()->IsNothType())) {
+        _diag.Report(Error, "function must return a value in all execution paths")
+            .SetCode(ErrHasntRet)
+            .AddSpan(fds->GetName().Start, fds->GetName().End);
+    }
 }
 
 void

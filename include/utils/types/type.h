@@ -21,6 +21,7 @@ class StructType;
 class TraitType;
 class ModuleType;
 class UnknownNamedType;
+class NothType;
 
 class Type {
 public:
@@ -108,6 +109,9 @@ public:
 
     IS(IsUnknownNamedType, Unknown)
     AS(AsUnknownNamedType, UnknownNamedType)
+
+    IS(IsNothType, Noth)
+    AS(AsNothType, NothType)
 
     #undef AS
     #undef IS
