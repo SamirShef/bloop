@@ -16,14 +16,6 @@ class FuncDeclStmt : public Stmt {
 public:
     explicit FuncDeclStmt(NameObj n, std::vector<Argument> &ar, Type *rt, std::vector<Stmt *> &b, AccessModifier ac, llvm::SMLoc s, llvm::SMLoc e)
         : _name(n), _args(ar), _retType(rt), _body(b), Stmt(ac, NkFuncDeclStmt, s, e) {}
-
-    void
-    Delete() override {
-        delete _retType;
-        for (auto &s : _body) {
-            s->Delete();
-        }
-    }
     
     NameObj
     GetName() const {
@@ -35,8 +27,8 @@ public:
         return _args;
     }
 
-    Type *
-    GetRetType() const {
+    Type *&
+    GetRetType() {
         return _retType;
     }
 

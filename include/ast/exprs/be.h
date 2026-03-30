@@ -12,12 +12,6 @@ class BinaryExpr : public Expr {
 public:
     explicit BinaryExpr(Expr *l, const Token o, Expr *r, llvm::SMLoc s, llvm::SMLoc e) : _lhs(l), _op(o), _rhs(r), Expr(NkBinaryExpr, s, e) {}
 
-    void
-    Delete() override {
-        _lhs->Delete();
-        _rhs->Delete();
-    }
-
     Expr *
     GetLHS() const {
         return _lhs;

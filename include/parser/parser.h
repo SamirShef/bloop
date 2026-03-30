@@ -13,14 +13,14 @@ namespace bloop {
 class Parser {
     DiagnosticEngine &_diag;
     std::vector<Token> &_tokens;
-    uint pos = 0;
+    uint _pos = 0;
 
 public:
     explicit Parser(DiagnosticEngine &d, std::vector<Token> &t) : _diag(d), _tokens(t) {}
 
     void
     ParseInto(std::vector<Stmt *> &stmts) {
-        while (pos < _tokens.size()) {
+        while (_pos < _tokens.size()) {
             stmts.push_back(parseStmt());
         }
     }

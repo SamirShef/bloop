@@ -12,6 +12,8 @@ class StructType : public Type {
 public:
     explicit StructType(NameObj n, Module *m, llvm::SMLoc s, llvm::SMLoc e) : _name(n), _baseMod(m), Type(Type::StructPtr, s, e) {}
 
+    CLASSOF(StructPtr)
+
     NameObj
     GetName() const {
         return _name;

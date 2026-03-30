@@ -34,6 +34,12 @@ public:
         _diag.Notes.push_back(n);
         return *this;
     }
+    
+    DiagnosticBuilder &
+    AddHelp(std::string n) {
+        _diag.Helps.push_back(n);
+        return *this;
+    }
 };
 
 }

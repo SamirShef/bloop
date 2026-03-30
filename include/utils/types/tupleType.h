@@ -11,6 +11,8 @@ class TupleType : public Type {
 public:
     explicit TupleType(std::vector<Type *> &t, llvm::SMLoc s, llvm::SMLoc e) : _types(t), Type(Type::Tuple, s, e) {}
 
+    CLASSOF(Tuple)
+
     std::vector<Type *> &
     GetTypes() {
         return _types;

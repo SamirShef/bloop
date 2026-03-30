@@ -16,19 +16,13 @@ public:
     explicit VarDeclStmt(NameObj n, Type *t, Expr *expr, bool ic, AccessModifier a, llvm::SMLoc s, llvm::SMLoc e)
         : _name(n), _type(t), _expr(expr), _isConst(ic), Stmt(a, NkVarDeclStmt, s, e) {}
 
-    void
-    Delete() override {
-        delete _type;
-        delete _expr;
-    }
-
     NameObj
     GetName() const {
         return _name;
     }
 
-    Type *
-    GetType() const {
+    Type *&
+    GetType() {
         return _type;
     }
 

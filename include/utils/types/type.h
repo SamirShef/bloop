@@ -6,6 +6,22 @@
 
 namespace bloop {
 
+#define CLASSOF(k) constexpr static bool classof(const Type *type) { \
+        return type->Is(Type::k); \
+    }
+
+class CharType;
+class IntegerType;
+class FloatingType;
+class TupleType;
+class StringType;
+class PointerType;
+class ArrayType;
+class StructType;
+class TraitType;
+class ModuleType;
+class UnknownNamedType;
+
 class Type {
 public:
     enum Kind : uint8_t {
@@ -32,6 +48,9 @@ private:
 public:
     explicit Type(Type::Kind k, llvm::SMLoc s, llvm::SMLoc e) : _kind(k), _start(s), _end(e) {}
 
+    #define IS(n, k) constexpr bool n() const { return Is(k); }
+    #define AS(n, t) t *n();
+    
     Kind
     GetKind() const {
         return _kind;
@@ -53,54 +72,45 @@ public:
     }
 
     constexpr bool
-    IsChar() const {
-        return Is(Char);
+    IsNumber() const {
+        return Is(Integer) || Is(Floating);
     }
 
-    constexpr bool
-    IsInteger() const {
-        return Is(Integer);
-    }
+    IS(IsChar, Char)
+    AS(AsChar, CharType)
 
-    constexpr bool
-    IsFloating() const {
-        return Is(Floating);
-    }
+    IS(IsInteger, Integer)
+    AS(AsInteger, IntegerType)
 
-    constexpr bool
-    IsTuple() const {
-        return Is(Tuple);
-    }
+    IS(IsFloating, Floating)
+    AS(AsFloating, FloatingType)
 
-    constexpr bool
-    IsString() const {
-        return Is(String);
-    }
+    IS(IsTuple, Tuple)
+    AS(AsTuple, TupleType)
 
-    constexpr bool
-    IsPointer() const {
-        return Is(Pointer);
-    }
+    IS(IsString, String)
+    AS(AsString, StringType)
 
-    constexpr bool
-    IsArray() const {
-        return Is(Array);
-    }
+    IS(IsPointer, Pointer)
+    AS(AsPointer, PointerType)
 
-    constexpr bool
-    IsStructPtr() const {
-        return Is(StructPtr);
-    }
+    IS(IsArray, Array)
+    AS(AsArray, ArrayType)
 
-    constexpr bool
-    IsTraitPtr() const {
-        return Is(TraitPtr);
-    }
+    IS(IsStructPtr, StructPtr)
+    AS(AsStructPtr, StructType)
 
-    constexpr bool
-    IsModulePtr() const {
-        return Is(ModulePtr);
-    }
+    IS(IsTraitPtr, TraitPtr)
+    AS(AsTraitPtr, TraitType)
+
+    IS(IsModulePtr, ModulePtr)
+    AS(AsModulePtr, ModuleType)
+
+    IS(IsUnknownNamedType, Unknown)
+    AS(AsUnknownNamedType, UnknownNamedType)
+
+    #undef AS
+    #undef IS
 
     virtual std::string
     ToString() = 0;

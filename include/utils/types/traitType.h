@@ -12,6 +12,8 @@ class TraitType : public Type {
 public:
     explicit TraitType(NameObj n, Module *b, llvm::SMLoc s, llvm::SMLoc e) : _name(n), _baseMod(b), Type(Type::TraitPtr, s, e) {}
 
+    CLASSOF(TraitPtr)
+
     NameObj
     GetName() const {
         return _name;

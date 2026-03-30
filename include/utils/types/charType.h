@@ -7,6 +7,8 @@ class CharType : public Type {
 public:
     explicit CharType(llvm::SMLoc s, llvm::SMLoc e) : Type(Type::Char, s ,e) {}
 
+    CLASSOF(Char)
+    
     std::string
     ToString() override {
         return "char";

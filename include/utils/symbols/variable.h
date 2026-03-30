@@ -1,18 +1,19 @@
 #pragma once
+#include <utils/name.h>
 #include <utils/symbols/access.h>
-#include <utils/types/type.h>
-#include <string>
+#include <utils/value.h>
 
 namespace bloop {
 
 struct Variable {
-    std::string     Name;
+    NameObj         Name;
     class Type     *Type;
     bool            IsConst;
     AccessModifier  Access;
     uint            RefsCount = 0;
+    Value           Val;
 
-    explicit Variable(std::string n, class Type *t, bool ic, AccessModifier a) : Name(n), Type(t), IsConst(ic), Access(a) {}
+    explicit Variable(NameObj n, class Type *t, bool ic, AccessModifier a, Value v) : Name(n), Type(t), IsConst(ic), Access(a), Val(v) {}
 };
 
 }

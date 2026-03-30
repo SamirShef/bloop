@@ -10,6 +10,8 @@ class IntegerType : public Type {
 public:
     explicit IntegerType(unsigned bw, bool iu, llvm::SMLoc s, llvm::SMLoc e) : _bitWidth(bw), _isUnsigned(iu), Type(Type::Integer, s, e) {}
 
+    CLASSOF(Integer)
+
     unsigned
     GetBitWidth() const {
         return _bitWidth;

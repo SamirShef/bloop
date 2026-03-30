@@ -12,6 +12,7 @@ struct Diagnostic {
     std::string Message;
     std::vector<DiagnosticSpan> Spans;
     std::vector<std::string> Notes;
+    std::vector<std::string> Helps;
 
     explicit Diagnostic(DiagLevel level, std::string msg) : Level(level), Message(msg) {}
 };

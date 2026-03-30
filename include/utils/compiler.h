@@ -1,6 +1,7 @@
 #pragma once
 #include <lexer/lexer.h>
 #include <parser/parser.h>
+#include <sema/sema.h>
 #include <utils/astPrinter.h>
 #include <utils/modules/module.h>
 #include <llvm/Support/raw_ostream.h>
@@ -8,14 +9,6 @@
 #include <iostream>
 
 namespace bloop {
-
-static inline void
-deleteAST(std::vector<Stmt *> &ast) {
-    for (auto &s : ast) {
-        s->Delete();
-        delete s;
-    }
-}
 
 inline bool
 Compile(const std::filesystem::path &filePath, Module *mod) {
@@ -42,12 +35,16 @@ Compile(const std::filesystem::path &filePath, Module *mod) {
     if (diag.GetErrorsCount() > 0) {
         return false;
     }
+    
+    Semantic sema(diag, mod);
+    sema.Analyze(ast);
+    if (diag.GetErrorsCount() > 0) {
+        return false;
+    }
 
     ASTPrinter printer(srcMgr, std::cout);
     std::cout << '\n';
     printer.Print(ast, Blue);
-
-    deleteAST(ast);
 
     return true;
 }
