@@ -1,4 +1,5 @@
 #pragma once
+#include <utils/symbols/storageKind.h>
 #include <utils/name.h>
 #include <ast/expr.h>
 #include <utils/symbols/access.h>
@@ -21,8 +22,9 @@ struct Function {
     std::vector<Argument>   Args;
     AccessModifier          Access;
     uint                    RefsCount = 0;
+    StorageKind             Storage;
 
-    explicit Function(NameObj n, Type *rt, std::vector<Argument> &ar, AccessModifier ac) : Name(n), RetType(rt), Args(ar), Access(ac) {}
+    explicit Function(NameObj n, Type *rt, std::vector<Argument> &ar, AccessModifier ac, StorageKind s = Static) : Name(n), RetType(rt), Args(ar), Access(ac), Storage(s) {}
 };
 
 struct FuncOverload {
