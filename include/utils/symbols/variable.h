@@ -14,10 +14,10 @@ struct Variable {
     uint            RefsCount = 0;
     Value           Val;
     StorageKind     Storage;
-    uint            Index;
+    int             Index = -1;
 
-    explicit Variable(NameObj n, class Type *t, bool ic, AccessModifier a, Value v, StorageKind s = Static)
-        : Name(n), Type(t), IsConst(ic), Access(a), Val(v), Storage(s) {}
+    explicit Variable(NameObj n, class Type *t, bool ic, AccessModifier a, Value v, StorageKind s = Static, int i = -1)
+        : Name(n), Type(t), IsConst(ic), Access(a), Val(v), Storage(s), Index(i) {}
 };
 
 }

@@ -1,5 +1,4 @@
 #pragma once
-#include "hir/vds.h"
 #include <utils/symbols/function.h>
 #include <hir/node.h>
 
@@ -33,8 +32,8 @@ public:
         return _name;
     }
 
-    Type *
-    GetRetType() const {
+    Type *&
+    GetRetType() {
         return _retType;
     }
 

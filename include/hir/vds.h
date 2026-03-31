@@ -1,4 +1,5 @@
 #pragma once
+#include <utils/symbols/storageKind.h>
 #include <utils/types/type.h>
 #include <hir/node.h>
 #include <string>
@@ -10,9 +11,10 @@ class HIRVarDeclStmt : public HIRNode {
     Type *_type;
     HIRNode *_expr;
     bool _isConst;
+    StorageKind _storage;
 
 public:
-    explicit HIRVarDeclStmt(std::string n, Type *t, HIRNode *e, bool ic) : _name(n), _type(t), _expr(e), _isConst(ic), HIRNode(HIRNkVarDeclStmt) {}
+    explicit HIRVarDeclStmt(std::string n, Type *t, HIRNode *e, bool ic, StorageKind k) : _name(n), _type(t), _expr(e), _isConst(ic), _storage(k), HIRNode(HIRNkVarDeclStmt) {}
 
     static constexpr bool
     classof(const HIRNode *node) {
@@ -37,6 +39,11 @@ public:
     bool
     IsConst() const {
         return _isConst;
+    }
+
+    StorageKind
+    GetStorageKind() const {
+        return _storage;
     }
 };
 

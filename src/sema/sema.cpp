@@ -62,24 +62,20 @@ Semantic::analyzeVDS(VarDeclStmt *vds) {
         }
     }
 
-    auto varsCopy = _vars;
-    while (!varsCopy.empty()) {
-        auto &top = varsCopy.top();
-        if (auto it = top.VarsMap.find(vds->GetName().Name); it != top.VarsMap.end()) {
-            _diag.Report(Error, "redefinition of '" + vds->GetName().Name + "'")
-                .SetCode(ErrRedefinition)
-                .AddSpan(top.Vars[it->second].Name.Start, top.Vars[it->second].Name.End, "previous definition is here")
-                .AddSpan(vds->GetName().Start, vds->GetName().End, "redefinition here");
-            return;
-        }
-        varsCopy.pop();
+    auto &top = _vars.top();
+    if (auto it = top.VarsMap.find(vds->GetName().Name); it != top.VarsMap.end()) {
+        _diag.Report(Error, "redefinition of '" + vds->GetName().Name + "'")
+            .SetCode(ErrRedefinition)
+            .AddSpan(top.Vars[it->second].Name.Start, top.Vars[it->second].Name.End, "previous definition is here")
+            .AddSpan(vds->GetName().Start, vds->GetName().End, "redefinition here");
+        return;
     }
 
     Variable var(vds->GetName(), vds->GetType(), vds->IsConst(), vds->GetAccess(), val, _vars.size() == 1 ? Static : Stack);
     if (_vars.size() == 1) {
         _mod->Vars.emplace(vds->GetName().Name, var);
     }
-    _builder.CreateVar(vds->GetName().Name, vds->GetType(), exprRes.HirNode, vds->IsConst());
+    _builder.CreateVar(vds->GetName().Name, vds->GetType(), exprRes.HirNode, _vars.size() == 1 ? Static : Stack, vds->IsConst());
     createVar(vds->GetName().Name, var);
 }
 
@@ -135,10 +131,17 @@ Semantic::analyzeFDS(FuncDeclStmt *fds) {
         auto &a = fds->GetArgs()[i];
         hirArgs.push_back(HIRFuncArgument(a.Name.Name, a.Type, a.DefaultVal ? analyzeExpr(a.DefaultVal).HirNode : nullptr));
     }
+    
     auto *funcHir = _builder.CreateFunc(fds->GetName().Name, fds->GetRetType(), hirArgs);
 
     _funcsRetTypes.push(fds->GetRetType());
     _vars.push({});
+
+    for (int i = 0; i < fds->GetArgs().size(); ++i) {
+        auto &a = fds->GetArgs()[i];
+        createVar(a.Name.Name, Variable(a.Name, a.Type, false, Priv, Value::GetIncorrectValue(), Parameter, i));
+    }
+    
     bool hasRet = false;
     for (auto &s : fds->GetBody()) {
         if (s->GetKind() == NkRetStmt) {
@@ -148,13 +151,19 @@ Semantic::analyzeFDS(FuncDeclStmt *fds) {
     }
     _vars.pop();
     fds->GetRetType() = _funcsRetTypes.top(); // if type was inferred, then should apply this change
+    funcHir->GetRetType() = fds->GetRetType();
     _funcsRetTypes.pop();
 
-    if (!hasRet && (!fds->GetRetType() || !fds->GetRetType()->IsNothType())) {
+    if (!hasRet && fds->GetRetType() && !fds->GetRetType()->IsNothType()) {
         _diag.Report(Error, "function must return a value in all execution paths")
             .SetCode(ErrHasntRet)
             .AddSpan(fds->GetName().Start, fds->GetName().End);
     }
+    else if (!hasRet && (!fds->GetRetType() || fds->GetRetType() && fds->GetRetType()->IsNothType())) {
+        _builder.SetInsertionPoint(funcHir);
+        _builder.CreateRet(new NothType(llvm::SMLoc(), llvm::SMLoc()), nullptr);
+    }
+    _builder.SetInsertionPoint(nullptr);
 }
 
 void
@@ -165,17 +174,20 @@ Semantic::analyzeUS(UsingStmt *us) {
 void
 Semantic::analyzeRS(RetStmt *rs) {
     if (rs->GetExpr()) {
-        Value val = analyzeExpr(rs->GetExpr()).Val;
+        auto valRes = analyzeExpr(rs->GetExpr());
+        Value val = valRes.Val;
         if (!_funcsRetTypes.top()) {
             _funcsRetTypes.top() = val.Type;
         }
         else {
             implicitlyCast(val, &_funcsRetTypes.top());
         }
+        _builder.CreateRet(_funcsRetTypes.top(), valRes.HirNode);
     }
     else {
         if (!_funcsRetTypes.top()) {
             _funcsRetTypes.top() = new NothType(llvm::SMLoc(), llvm::SMLoc());
+            _builder.CreateRet(_funcsRetTypes.top(), nullptr);
         }
         else {
             _diag.Report(Error, "cannot implicitly cast 'noth' to '" + _funcsRetTypes.top()->ToString() + "'")
@@ -341,7 +353,7 @@ Semantic::analyzeVE(VarExpr *ve) {
             if (top.Vars[it->second].IsConst) {
                 return { top.Vars[it->second].Val, _builder.CreateLiteral(top.Vars[it->second].Val) };
             }
-            HIRNode *veNode = _builder.CreateLoadVar(varsCopy.size() == _vars.size() ? Static : Stack, top.Vars[it->second].Index);
+            HIRNode *veNode = _builder.CreateLoadVar(top.Vars[it->second].Storage, top.Vars[it->second].Index);
             return { Value(Value::Unknown, ValueData(), top.Vars[it->second].Type, ve->GetStartLoc(), ve->GetEndLoc()), veNode };
         }
         varsCopy.pop();
@@ -354,7 +366,7 @@ Semantic::analyzeVE(VarExpr *ve) {
 
 void
 Semantic::createVar(std::string name, Variable var) {
-    var.Index = _vars.top().Vars.size();
+    var.Index = var.Index == -1 ? _vars.top().Vars.size() : var.Index;
     _vars.top().Vars.push_back(var);
     _vars.top().VarsMap.emplace(name, var.Index);
 }

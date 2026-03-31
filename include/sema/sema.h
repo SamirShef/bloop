@@ -40,6 +40,11 @@ public:
         }
     }
 
+    HIRContext
+    GetContext() const {
+        return _builder.GetContext();
+    }
+
 private:
     void
     analyzeStmt(Stmt *stmt);

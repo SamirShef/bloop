@@ -31,6 +31,11 @@ public:
     GetCurFunc() {
         return _curFunc;
     }
+
+    void
+    SetCurFunc(HIRFuncDeclStmt *func) {
+        _curFunc = func;
+    }
 };
     
 class HIRBuilder {
@@ -39,21 +44,26 @@ class HIRBuilder {
 public:
     explicit HIRBuilder(HIRContext c) : _context(c) {}
 
+    HIRContext
+    GetContext() const {
+        return _context;
+    }
+
     HIRVarDeclStmt *
-    CreateVar(std::string name, Type *type, HIRNode *expr, bool isConst = false) {
-        return _context.AddNode(new HIRVarDeclStmt(name ,type, expr, isConst));
+    CreateVar(std::string name, Type *type, HIRNode *expr, StorageKind kind, bool isConst = false) {
+        return _context.AddNode(new HIRVarDeclStmt(name ,type, expr, isConst, kind));
     }
 
     HIRFuncDeclStmt *
     CreateFunc(std::string name, Type *retType, std::vector<HIRFuncArgument> args) {
         auto *func = _context.AddNode(new HIRFuncDeclStmt(name, retType, args));
-        _context.GetCurFunc() = func;
+        _context.SetCurFunc(func);
         return func;
     }
 
     HIRCastNode *
-    CreateCast(CastKind kind, HIRNode *expr) {
-        return _context.AddNode(new HIRCastNode(kind, expr));
+    CreateCast(CastKind kind, HIRNode *expr, Type *from, Type *to) {
+        return new HIRCastNode(kind, expr, from, to);
     }
 
     HIRLiteralExpr *
@@ -76,9 +86,19 @@ public:
         return new HIRVarExpr(kind, index);
     }
 
+    HIRRetStmt *
+    CreateRet(Type *type, HIRNode *expr) {
+        return _context.AddNode(new HIRRetStmt(type, expr));
+    }
+
     HIRNode *
     GetIncorrectValue() {
         return CreateLiteral(Value::GetIncorrectValue());
+    }
+
+    void
+    SetInsertionPoint(HIRFuncDeclStmt *func) {
+        _context.SetCurFunc(func);
     }
 };
 

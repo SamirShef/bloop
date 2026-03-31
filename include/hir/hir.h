@@ -5,3 +5,4 @@
 #include <hir/ue.h>
 #include <hir/vds.h>
 #include <hir/ve.h>
+#include <hir/rs.h>
