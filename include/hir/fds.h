@@ -1,4 +1,5 @@
 #pragma once
+#include "hir/vds.h"
 #include <utils/symbols/function.h>
 #include <hir/node.h>
 
@@ -19,8 +20,8 @@ class HIRFuncDeclStmt : public HIRNode {
     std::vector<HIRNode *> _body;
 
 public:
-    explicit HIRFuncDeclStmt(std::string n, Type *rt, std::vector<HIRFuncArgument> &a, std::vector<HIRNode *> &b)
-        : _name(n), _retType(rt), _args(a), _body(b), HIRNode(HIRNkFuncDeclStmt) {}
+    explicit HIRFuncDeclStmt(std::string n, Type *rt, std::vector<HIRFuncArgument> &a)
+        : _name(n), _retType(rt), _args(a), HIRNode(HIRNkFuncDeclStmt) {}
 
     static constexpr bool
     classof(const HIRNode *node) {

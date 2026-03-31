@@ -5,14 +5,30 @@
 
 namespace bloop {
 
+enum HIRBinaryKind : uint8_t {
+    HIRBkAdd,
+    HIRBkSub,
+    HIRBkMul,
+    HIRBkDiv,
+    HIRBkRem,
+    HIRBkEq,
+    HIRBkNEq,
+    HIRBkGt,
+    HIRBkGtEq,
+    HIRBkLt,
+    HIRBkLtEq,
+    HIRBkAnd,
+    HIRBkOr
+};
+    
 class HIRBinaryExpr : public HIRNode {
     Type *_commonType;
     HIRNode *_lhs;
     HIRNode *_rhs;
-    TokenKind _op;
+    HIRBinaryKind _op;
 
 public:
-    explicit HIRBinaryExpr(Type *ct, HIRNode *l, HIRNode *r, TokenKind o) : _commonType(ct), _lhs(l), _rhs(r), _op(o), HIRNode(HIRNkBinaryExpr) {}
+    explicit HIRBinaryExpr(Type *ct, HIRNode *l, HIRNode *r, HIRBinaryKind o) : _commonType(ct), _lhs(l), _rhs(r), _op(o), HIRNode(HIRNkBinaryExpr) {}
 
     static constexpr bool
     classof(const HIRNode *node) {
@@ -34,7 +50,7 @@ public:
         return _rhs;
     }
 
-    TokenKind
+    HIRBinaryKind
     GetOp() const {
         return _op;
     }

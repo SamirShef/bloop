@@ -5,12 +5,17 @@
 
 namespace bloop {
 
+enum HIRUnaryKind : uint8_t {
+    HIRUkNot,
+    HIRUkMinus
+};
+    
 class HIRUnaryExpr : public HIRNode {
     HIRNode *_rhs;
-    TokenKind _op;
+    HIRUnaryKind _op;
 
 public:
-    explicit HIRUnaryExpr(HIRNode *r, TokenKind o) : _rhs(r), _op(o), HIRNode(HIRNkUnaryExpr) {}
+    explicit HIRUnaryExpr(HIRNode *r, HIRUnaryKind o) : _rhs(r), _op(o), HIRNode(HIRNkUnaryExpr) {}
 
     static constexpr bool
     classof(const HIRNode *node) {
@@ -22,7 +27,7 @@ public:
         return _rhs;
     }
 
-    TokenKind
+    HIRUnaryKind
     GetOp() const {
         return _op;
     }

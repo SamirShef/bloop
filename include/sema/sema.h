@@ -1,4 +1,6 @@
 #pragma once
+#include <hir/builder.h>
+#include <hir/node.h>
 #include <utils/modules/module.h>
 #include <ast/ast.h>
 #include <diag/engine.h>
@@ -11,12 +13,23 @@ namespace bloop {
 
 class Semantic {
     DiagnosticEngine &_diag;
-    std::stack<std::unordered_map<std::string, Variable>> _vars;
     std::stack<Type *> _funcsRetTypes;
     Module *&_mod;
+    HIRBuilder _builder;
+    
+    struct SemanticResult {
+        Value Val;
+        HIRNode *HirNode;
+    };
+
+    struct Scope {
+        std::unordered_map<std::string, int> VarsMap;
+        std::vector<Variable> Vars;
+    };
+    std::stack<Scope> _vars;
 
 public:
-    Semantic(DiagnosticEngine &d, Module *&m) : _diag(d), _mod(m) {
+    explicit Semantic(DiagnosticEngine &d, Module *&m) : _diag(d), _mod(m), _builder(HIRContext()) {
         _vars.push({});
     }
 
@@ -43,19 +56,19 @@ private:
     void
     analyzeRS(RetStmt *rs);
 
-    Value
+    SemanticResult
     analyzeExpr(Expr *expr);
 
-    Value
+    SemanticResult
     analyzeBE(BinaryExpr *be);
 
-    Value
+    SemanticResult
     analyzeLE(LiteralExpr *le);
 
-    Value
+    SemanticResult
     analyzeUE(UnaryExpr *ue);
 
-    Value
+    SemanticResult
     analyzeVE(VarExpr *ve);
 
     #define FIND(t, n, map) t *n(std::string name) { \
@@ -70,6 +83,9 @@ private:
 
     #undef FIND
 
+    void
+    createVar(std::string name, Variable var);
+
     Type *
     resolveType(Type **t);
 
@@ -81,6 +97,12 @@ private:
 
     Value
     implicitlyCast(Value val, Type **expectedType);
+
+    HIRBinaryKind
+    tokenKindToHIRBk(TokenKind kind);
+
+    HIRUnaryKind
+    tokenKindToHIRUk(TokenKind kind);
 };
 
 }
