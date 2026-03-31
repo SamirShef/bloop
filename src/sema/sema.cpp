@@ -41,6 +41,9 @@ Semantic::analyzeVDS(VarDeclStmt *vds) {
                     val = Value::GetIncorrectValue();
             }
         }
+        if (vds->GetExpr()) {
+            exprRes = implicitlyCast(exprRes, &vds->GetType());
+        }
     }
     else {
         if (vds->GetExpr()) {
@@ -180,7 +183,7 @@ Semantic::analyzeRS(RetStmt *rs) {
             _funcsRetTypes.top() = val.Type;
         }
         else {
-            implicitlyCast(val, &_funcsRetTypes.top());
+            valRes = implicitlyCast(valRes, &_funcsRetTypes.top());
         }
         _builder.CreateRet(_funcsRetTypes.top(), valRes.HirNode);
     }
@@ -217,6 +220,8 @@ Semantic::analyzeBE(BinaryExpr *be) {
     Value lhs = lhsRes.Val;
     Value rhs = rhsRes.Val;
     Type *commonType = getCommonTypeForOp(lhs.Type, rhs.Type, be->GetOp(), be->GetStartLoc(), be->GetEndLoc());
+    lhsRes = implicitlyCast(lhsRes, &commonType);
+    rhsRes = implicitlyCast(rhsRes, &commonType);
 
     HIRNode *binNode = _builder.CreateBinary(commonType, lhsRes.HirNode, rhsRes.HirNode, tokenKindToHIRBk(be->GetOp().Kind));
 
@@ -532,15 +537,16 @@ Semantic::getCommonTypeForOp(Type *lhs, Type *rhs, const Token op, llvm::SMLoc s
     return lhs;
 }
 
-Value
-Semantic::implicitlyCast(Value val, Type **expectedType) {
-    resolveType(&val.Type);
+Semantic::SemanticResult
+Semantic::implicitlyCast(SemanticResult res, Type **expectedType) {
+    resolveType(&res.Val.Type);
     resolveType(expectedType);
     
-    Type *src = val.Type;
+    Type *src = res.Val.Type;
     Type *dst = *expectedType;
+
     if (src == dst) {
-        return val;
+        return res;
     }
 
     if (src->IsInteger() && dst->IsInteger()) {
@@ -549,10 +555,22 @@ Semantic::implicitlyCast(Value val, Type **expectedType) {
 
         if (dstI->GetBitWidth() >= srcI->GetBitWidth()) {
             if (srcI->IsUnsigned() == dstI->IsUnsigned() || dstI->GetBitWidth() > srcI->GetBitWidth()) {
-                val.Type = dst;
-                return val;
+                CastKind kind = srcI->IsUnsigned() ? ZeroExtend : SignExtend;
+                res.Val.Type = dst;
+                res.HirNode = _builder.CreateCast(kind, res.HirNode, src, dst);
+                return res;
             }
         }
+    }
+
+    if (src->IsInteger() && dst->IsFloating()) {
+        res.Val.Type = dst;
+        if (res.Val.Kind == Value::Const) {
+            double d = static_cast<double>(std::get<0>(res.Val.Data));
+            res.Val.Data = ValueData(d);
+        }
+        res.HirNode = _builder.CreateCast(IntToFloat, res.HirNode, src, dst);
+        return res;
     }
 
     if (src->IsFloating() && dst->IsFloating()) {
@@ -560,30 +578,21 @@ Semantic::implicitlyCast(Value val, Type **expectedType) {
         auto *dstF = dst->AsFloating();
 
         if (dstF->IsDouble() && srcF->IsFloat()) {
-            val.Type = dst;
-            if (val.Kind == Value::Const) {
-                double d = std::get<1>(val.Data); 
-                val.Data = ValueData(d);
+            res.Val.Type = dst;
+            if (res.Val.Kind == Value::Const) {
+                double d = std::get<1>(res.Val.Data); 
+                res.Val.Data = ValueData(d);
             }
-            return val;
+            res.HirNode = _builder.CreateCast(FPExtend, res.HirNode, src, dst); 
+            return res;
         }
-    }
-
-    if (src->IsInteger() && dst->IsFloating()) {
-        val.Type = dst;
-        if (val.Kind == Value::Const) {
-            double d = static_cast<double>(std::get<0>(val.Data));
-            val.Data = ValueData(d);
-        }
-        return val;
     }
 
     _diag.Report(Error, "cannot implicitly cast '" + src->ToString() + "' to '" + dst->ToString() + "'")
         .SetCode(ErrCannotImplCast)
-        .AddSpan(val.Start, val.End)
-        .AddHelp("сonsider using an explicit cast");
+        .AddSpan(res.Val.Start, res.Val.End);
 
-    return Value::GetIncorrectValue();
+    return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
 }
 
 HIRBinaryKind

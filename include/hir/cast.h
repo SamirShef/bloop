@@ -11,6 +11,7 @@ enum CastKind {
     ZeroExtend, // zext
     Truncate,   // trunc
     Bitcast,    // bitcast
+    FPExtend,   // fpext
 };
 
 class HIRCastNode : public HIRNode {

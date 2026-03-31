@@ -279,6 +279,8 @@ CodeGen::generateCast(HIRCastNode *cast) {
             return _builder.CreateTrunc(expr, getType(cast->GetToType()), "trunc.tmp");
         case Bitcast:
             return _builder.CreateBitCast(expr, getType(cast->GetToType()), "bitcast.tmp");
+        case FPExtend:
+            return _builder.CreateFPExt(expr, getType(cast->GetToType()), "fpext.tmp");
     }
 }
 

@@ -22,6 +22,7 @@ class TraitType;
 class ModuleType;
 class UnknownNamedType;
 class NothType;
+class SizeType;
 
 class Type {
 public:
@@ -112,6 +113,9 @@ public:
 
     IS(IsNothType, Noth)
     AS(AsNothType, NothType)
+
+    IS(IsSizeType, Size)
+    AS(AsSizeType, SizeType)
 
     #undef AS
     #undef IS

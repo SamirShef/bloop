@@ -100,8 +100,8 @@ private:
     Type *
     getCommonTypeForOp(Type *lhs, Type *rhs, const Token op, llvm::SMLoc s = llvm::SMLoc(), llvm::SMLoc e = llvm::SMLoc());
 
-    Value
-    implicitlyCast(Value val, Type **expectedType);
+    SemanticResult
+    implicitlyCast(SemanticResult res, Type **expectedType);
 
     HIRBinaryKind
     tokenKindToHIRBk(TokenKind kind);

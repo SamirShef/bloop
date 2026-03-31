@@ -53,7 +53,7 @@ Compile(const std::filesystem::path &filePath, const std::filesystem::path &objP
     CodeGen codegen(mod->Name, context.GetNodes());
     llvm::Module *llvmMod = codegen.Generate();
     std::cout << '\n';
-    /* llvmMod->print(llvm::outs(), nullptr); */
+    llvmMod->print(llvm::outs(), nullptr);
 
     InitializeLLVMTargets();
     std::string tripleStr = llvm::sys::getDefaultTargetTriple();
