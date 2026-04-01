@@ -22,7 +22,8 @@ Semantic::analyzeStmt(Stmt *stmt) {
 
 void
 Semantic::analyzeVDS(VarDeclStmt *vds) {
-    Value val = vds->GetExpr() ? analyzeExpr(vds->GetExpr()) : Value(Value::Unknown, ValueData(), nullptr, llvm::SMLoc(), llvm::SMLoc());
+    auto exprRes = vds->GetExpr() ? analyzeExpr(vds->GetExpr()) : SemanticResult { Value(Value::Unknown, ValueData(), nullptr, llvm::SMLoc(), llvm::SMLoc()), nullptr };
+    Value val = exprRes.Val;
     if (vds->GetType()) {
         resolveType(&vds->GetType());
         if (!vds->GetExpr()) {
@@ -39,6 +40,9 @@ Semantic::analyzeVDS(VarDeclStmt *vds) {
                         .AddSpan(vds->GetType()->GetStartLoc(), vds->GetType()->GetEndLoc());
                     val = Value::GetIncorrectValue();
             }
+        }
+        if (vds->GetExpr()) {
+            exprRes = implicitlyCast(exprRes, &vds->GetType());
         }
     }
     else {
@@ -61,24 +65,21 @@ Semantic::analyzeVDS(VarDeclStmt *vds) {
         }
     }
 
-    auto varsCopy = _vars;
-    while (!varsCopy.empty()) {
-        auto &top = varsCopy.top();
-        if (auto it = top.find(vds->GetName().Name); it != top.end()) {
-            _diag.Report(Error, "redefinition of '" + vds->GetName().Name + "'")
-                .SetCode(ErrRedefinition)
-                .AddSpan(it->second.Name.Start, it->second.Name.End, "previous definition is here")
-                .AddSpan(vds->GetName().Start, vds->GetName().End, "redefinition here");
-            return;
-        }
-        varsCopy.pop();
+    auto &top = _vars.top();
+    if (auto it = top.VarsMap.find(vds->GetName().Name); it != top.VarsMap.end()) {
+        _diag.Report(Error, "redefinition of '" + vds->GetName().Name + "'")
+            .SetCode(ErrRedefinition)
+            .AddSpan(top.Vars[it->second].Name.Start, top.Vars[it->second].Name.End, "previous definition is here")
+            .AddSpan(vds->GetName().Start, vds->GetName().End, "redefinition here");
+        return;
     }
 
-    Variable var(vds->GetName(), vds->GetType(), vds->IsConst(), vds->GetAccess(), val);
+    Variable var(vds->GetName(), vds->GetType(), vds->IsConst(), vds->GetAccess(), val, _vars.size() == 1 ? Static : Stack);
     if (_vars.size() == 1) {
         _mod->Vars.emplace(vds->GetName().Name, var);
     }
-    _vars.top().emplace(vds->GetName().Name, var);
+    _builder.CreateVar(vds->GetName().Name, vds->GetType(), exprRes.HirNode, _vars.size() == 1 ? Static : Stack, vds->IsConst());
+    createVar(vds->GetName().Name, var);
 }
 
 void
@@ -126,17 +127,46 @@ Semantic::analyzeFDS(FuncDeclStmt *fds) {
         _mod->FuncOverloads.emplace(fds->GetName().Name, FuncOverload());
         candidates = &_mod->FuncOverloads.at(fds->GetName().Name);
     }
-    Function func(fds->GetName(), fds->GetRetType(), fds->GetArgs(), fds->GetAccess());
+    Function func(fds->GetName(), fds->GetRetType(), fds->GetArgs(), fds->GetAccess(), Static);
     candidates->Candidates.push_back(func);
+    std::vector<HIRFuncArgument> hirArgs;
+    for (int i = 0; i < fds->GetArgs().size(); ++i) {
+        auto &a = fds->GetArgs()[i];
+        hirArgs.push_back(HIRFuncArgument(a.Name.Name, a.Type, a.DefaultVal ? analyzeExpr(a.DefaultVal).HirNode : nullptr));
+    }
+    
+    auto *funcHir = _builder.CreateFunc(fds->GetName().Name, fds->GetRetType(), hirArgs);
 
     _funcsRetTypes.push(fds->GetRetType());
     _vars.push({});
+
+    for (int i = 0; i < fds->GetArgs().size(); ++i) {
+        auto &a = fds->GetArgs()[i];
+        createVar(a.Name.Name, Variable(a.Name, a.Type, false, Priv, Value::GetIncorrectValue(), Parameter, i));
+    }
+    
+    bool hasRet = false;
     for (auto &s : fds->GetBody()) {
+        if (s->GetKind() == NkRetStmt) {
+            hasRet = true;
+        }
         analyzeStmt(s);
     }
     _vars.pop();
     fds->GetRetType() = _funcsRetTypes.top(); // if type was inferred, then should apply this change
+    funcHir->GetRetType() = fds->GetRetType();
     _funcsRetTypes.pop();
+
+    if (!hasRet && fds->GetRetType() && !fds->GetRetType()->IsNothType()) {
+        _diag.Report(Error, "function must return a value in all execution paths")
+            .SetCode(ErrHasntRet)
+            .AddSpan(fds->GetName().Start, fds->GetName().End);
+    }
+    else if (!hasRet && (!fds->GetRetType() || fds->GetRetType() && fds->GetRetType()->IsNothType())) {
+        _builder.SetInsertionPoint(funcHir);
+        _builder.CreateRet(new NothType(llvm::SMLoc(), llvm::SMLoc()), nullptr);
+    }
+    _builder.SetInsertionPoint(nullptr);
 }
 
 void
@@ -147,17 +177,20 @@ Semantic::analyzeUS(UsingStmt *us) {
 void
 Semantic::analyzeRS(RetStmt *rs) {
     if (rs->GetExpr()) {
-        Value val = analyzeExpr(rs->GetExpr());
+        auto valRes = analyzeExpr(rs->GetExpr());
+        Value val = valRes.Val;
         if (!_funcsRetTypes.top()) {
             _funcsRetTypes.top() = val.Type;
         }
         else {
-            implicitlyCast(val, &_funcsRetTypes.top());
+            valRes = implicitlyCast(valRes, &_funcsRetTypes.top());
         }
+        _builder.CreateRet(_funcsRetTypes.top(), valRes.HirNode);
     }
     else {
         if (!_funcsRetTypes.top()) {
             _funcsRetTypes.top() = new NothType(llvm::SMLoc(), llvm::SMLoc());
+            _builder.CreateRet(_funcsRetTypes.top(), nullptr);
         }
         else {
             _diag.Report(Error, "cannot implicitly cast 'noth' to '" + _funcsRetTypes.top()->ToString() + "'")
@@ -168,7 +201,7 @@ Semantic::analyzeRS(RetStmt *rs) {
     }
 }
 
-Value
+Semantic::SemanticResult
 Semantic::analyzeExpr(Expr *expr) {
     #define NODE(k, f, t) case k: return f(static_cast<t *>(expr));
     switch (expr->GetKind()) {
@@ -180,14 +213,20 @@ Semantic::analyzeExpr(Expr *expr) {
     #undef NODE
 }
 
-Value
+Semantic::SemanticResult
 Semantic::analyzeBE(BinaryExpr *be) {
-    Value lhs = analyzeExpr(be->GetLHS());
-    Value rhs = analyzeExpr(be->GetRHS());
+    auto lhsRes = analyzeExpr(be->GetLHS());
+    auto rhsRes = analyzeExpr(be->GetRHS());
+    Value lhs = lhsRes.Val;
+    Value rhs = rhsRes.Val;
     Type *commonType = getCommonTypeForOp(lhs.Type, rhs.Type, be->GetOp(), be->GetStartLoc(), be->GetEndLoc());
+    lhsRes = implicitlyCast(lhsRes, &commonType);
+    rhsRes = implicitlyCast(rhsRes, &commonType);
+
+    HIRNode *binNode = _builder.CreateBinary(commonType, lhsRes.HirNode, rhsRes.HirNode, tokenKindToHIRBk(be->GetOp().Kind));
 
     if (lhs.IsUnknown() || rhs.IsUnknown()) {
-        return Value(Value::Unknown, ValueData(), commonType, be->GetStartLoc(), be->GetEndLoc());
+        return { Value(Value::Unknown, ValueData(), commonType, be->GetStartLoc(), be->GetEndLoc()), binNode };
     }
 
     // TODO: add suporting of strings
@@ -225,25 +264,27 @@ Semantic::analyzeBE(BinaryExpr *be) {
         CASE(TkLogOr, ||)
         #undef CASE
     }
+    
     switch (commonType->GetKind()) {
         #define VAL(t) Value(Value::Const, ValueData(static_cast<t>(res)), commonType, be->GetStartLoc(), be->GetEndLoc())
         case Type::Integer:
-            return VAL(int64_t);
+            return { VAL(int64_t), _builder.CreateLiteral(VAL(int64_t)) };
         case Type::Floating:
-            return VAL(double);
+            return { VAL(double), _builder.CreateLiteral(VAL(double)) };
         // TODO: add suporting of strings
         #undef VAL
     }
 }
 
-Value
+Semantic::SemanticResult
 Semantic::analyzeLE(LiteralExpr *le) {
-    return le->GetVal();
+    return { le->GetVal(), _builder.CreateLiteral(le->GetVal()) };
 }
 
-Value
+Semantic::SemanticResult
 Semantic::analyzeUE(UnaryExpr *ue) {
-    Value rhs = analyzeExpr(ue->GetRHS());
+    auto rhsRes = analyzeExpr(ue->GetRHS());
+    Value rhs = rhsRes.Val;
 
     bool ok = true;
     switch (ue->GetOp().Kind) {
@@ -277,9 +318,11 @@ Semantic::analyzeUE(UnaryExpr *ue) {
             }
             break;
     }
+
+    HIRNode *unNode = _builder.CreateUnary(rhsRes.HirNode, tokenKindToHIRUk(ue->GetOp().Kind));
     
     if (rhs.IsUnknown() || !ok) {
-        return Value(Value::Unknown, ValueData(), rhs.Type, ue->GetStartLoc(), ue->GetEndLoc());
+        return { Value(Value::Unknown, ValueData(), rhs.Type, ue->GetStartLoc(), ue->GetEndLoc()), unNode };
     }
 
     double rhsVal;
@@ -299,30 +342,38 @@ Semantic::analyzeUE(UnaryExpr *ue) {
     switch (rhs.Type->GetKind()) {
         #define VAL(t) Value(Value::Const, ValueData(static_cast<t>(res)), rhs.Type, ue->GetStartLoc(), ue->GetEndLoc())
         case Type::Integer:
-            return VAL(int64_t);
+            return { VAL(int64_t), _builder.CreateLiteral(VAL(int64_t)) };
         case Type::Floating:
-            return VAL(double);
+            return { VAL(double), _builder.CreateLiteral(VAL(double)) };
         #undef VAL
     }
 }
 
-Value
+Semantic::SemanticResult
 Semantic::analyzeVE(VarExpr *ve) {
     auto varsCopy = _vars;
     while (!varsCopy.empty()) {
         auto &top = varsCopy.top();
-        if (auto it = top.find(ve->GetName().Name); it != top.end()) {
-            if (it->second.IsConst) {
-                return it->second.Val;
+        if (auto it = top.VarsMap.find(ve->GetName().Name); it != top.VarsMap.end()) {
+            if (top.Vars[it->second].IsConst) {
+                return { top.Vars[it->second].Val, _builder.CreateLiteral(top.Vars[it->second].Val) };
             }
-            return Value(Value::Unknown, ValueData(), it->second.Type, ve->GetStartLoc(), ve->GetEndLoc());
+            HIRNode *veNode = _builder.CreateLoadVar(top.Vars[it->second].Storage, top.Vars[it->second].Index);
+            return { Value(Value::Unknown, ValueData(), top.Vars[it->second].Type, ve->GetStartLoc(), ve->GetEndLoc()), veNode };
         }
         varsCopy.pop();
     }
     _diag.Report(Error, "variable is undeclared in this scope")
         .SetCode(ErrUndeclaredVar)
         .AddSpan(ve->GetStartLoc(), ve->GetEndLoc());
-    return Value::GetIncorrectValue();
+    return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+}
+
+void
+Semantic::createVar(std::string name, Variable var) {
+    var.Index = var.Index == -1 ? _vars.top().Vars.size() : var.Index;
+    _vars.top().Vars.push_back(var);
+    _vars.top().VarsMap.emplace(name, var.Index);
 }
 
 Type *
@@ -486,15 +537,16 @@ Semantic::getCommonTypeForOp(Type *lhs, Type *rhs, const Token op, llvm::SMLoc s
     return lhs;
 }
 
-Value
-Semantic::implicitlyCast(Value val, Type **expectedType) {
-    resolveType(&val.Type);
+Semantic::SemanticResult
+Semantic::implicitlyCast(SemanticResult res, Type **expectedType) {
+    resolveType(&res.Val.Type);
     resolveType(expectedType);
     
-    Type *src = val.Type;
+    Type *src = res.Val.Type;
     Type *dst = *expectedType;
+
     if (src == dst) {
-        return val;
+        return res;
     }
 
     if (src->IsInteger() && dst->IsInteger()) {
@@ -503,10 +555,22 @@ Semantic::implicitlyCast(Value val, Type **expectedType) {
 
         if (dstI->GetBitWidth() >= srcI->GetBitWidth()) {
             if (srcI->IsUnsigned() == dstI->IsUnsigned() || dstI->GetBitWidth() > srcI->GetBitWidth()) {
-                val.Type = dst;
-                return val;
+                CastKind kind = srcI->IsUnsigned() ? ZeroExtend : SignExtend;
+                res.Val.Type = dst;
+                res.HirNode = _builder.CreateCast(kind, res.HirNode, src, dst);
+                return res;
             }
         }
+    }
+
+    if (src->IsInteger() && dst->IsFloating()) {
+        res.Val.Type = dst;
+        if (res.Val.Kind == Value::Const) {
+            double d = static_cast<double>(std::get<0>(res.Val.Data));
+            res.Val.Data = ValueData(d);
+        }
+        res.HirNode = _builder.CreateCast(IntToFloat, res.HirNode, src, dst);
+        return res;
     }
 
     if (src->IsFloating() && dst->IsFloating()) {
@@ -514,30 +578,63 @@ Semantic::implicitlyCast(Value val, Type **expectedType) {
         auto *dstF = dst->AsFloating();
 
         if (dstF->IsDouble() && srcF->IsFloat()) {
-            val.Type = dst;
-            if (val.Kind == Value::Const) {
-                double d = std::get<1>(val.Data); 
-                val.Data = ValueData(d);
+            res.Val.Type = dst;
+            if (res.Val.Kind == Value::Const) {
+                double d = std::get<1>(res.Val.Data); 
+                res.Val.Data = ValueData(d);
             }
-            return val;
+            res.HirNode = _builder.CreateCast(FPExtend, res.HirNode, src, dst); 
+            return res;
         }
-    }
-
-    if (src->IsInteger() && dst->IsFloating()) {
-        val.Type = dst;
-        if (val.Kind == Value::Const) {
-            double d = static_cast<double>(std::get<0>(val.Data));
-            val.Data = ValueData(d);
-        }
-        return val;
     }
 
     _diag.Report(Error, "cannot implicitly cast '" + src->ToString() + "' to '" + dst->ToString() + "'")
         .SetCode(ErrCannotImplCast)
-        .AddSpan(val.Start, val.End)
-        .AddHelp("сonsider using an explicit cast");
+        .AddSpan(res.Val.Start, res.Val.End);
 
-    return Value::GetIncorrectValue();
+    return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+}
+
+HIRBinaryKind
+Semantic::tokenKindToHIRBk(TokenKind kind) {
+    switch (kind) {
+        case TkPlus:
+            return HIRBkAdd;
+        case TkMinus:
+            return HIRBkSub;
+        case TkStar:
+            return HIRBkMul;
+        case TkSlash:
+            return HIRBkDiv;
+        case TkPercent:
+            return HIRBkRem;
+        case TkLt:
+            return HIRBkLt;
+        case TkGt:
+            return HIRBkGt;
+        case TkLtEq:
+            return HIRBkLtEq;
+        case TkGtEq:
+            return HIRBkGtEq;
+        case TkEqEq:
+            return HIRBkEq;
+        case TkNotEq:
+            return HIRBkNEq;
+        case TkLogAnd:
+            return HIRBkAnd;
+        case TkLogOr:
+            return HIRBkOr;
+    }
+}
+
+HIRUnaryKind
+Semantic::tokenKindToHIRUk(TokenKind kind) {
+    switch (kind) {
+        case TkBang:
+            return HIRUkNot;
+        case TkMinus:
+            return HIRUkMinus;
+    }
 }
 
 }

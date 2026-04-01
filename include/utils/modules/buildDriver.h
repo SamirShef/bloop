@@ -1,4 +1,5 @@
 #pragma once
+#include "utils/compilation.h"
 #include <nlohmann/json.hpp>
 #include <toml++/toml.h>
 #include <utils/compiler.h>
@@ -21,6 +22,7 @@ enum VisitState : uint8_t {
 struct FileNode {
     std::string ImportName;
     fs::path    PhysicalPath;
+    fs::path    ProjectRootPath;
     VisitState  State = Unvisited;
     
     std::vector<std::string> Dependencies;
@@ -31,6 +33,7 @@ struct FileNode {
 struct Manifest {
     std::string PackageName;
     fs::path    MainFilePath;
+    fs::path    Path;
 };
 
 class BuildDriver {
@@ -60,10 +63,14 @@ public:
         sort(entryPoint);
 
         std::cout << "[3/3] Executing compilation pipeline:\n";
+        std::vector<std::string> objs;
+        auto curArtefactDir = _projectRoot.parent_path() / "build" / "obj";
         for (const auto &name : _buildOrder) {
             FileNode &node = _graph[name];
             node.Mod = new Module(name, AccessModifier::Pub);
             
+            auto artefactsDir = node.ProjectRootPath / "build" / "obj";
+
             std::cout << "  -> " << name << " (" << node.PhysicalPath.string() << ")\n";
 
             if (isBitcodeFresh(name)) {
@@ -72,13 +79,21 @@ public:
             }
             else {
                 std::cout << "Compiling module: " << name << '\n';
-                if (!Compile(node.PhysicalPath, node.Mod)) {
+                auto objPath = artefactsDir / node.PhysicalPath.lexically_relative(node.ProjectRootPath).parent_path() / (node.PhysicalPath.stem().string() + ".o");
+                objPath = objPath.lexically_normal();
+                auto compileRes = Compile(node.PhysicalPath, objPath, node.Mod);
+                if (!compileRes.first) {
                     this->~BuildDriver();
                     exit(1);
                 }
+                objs.push_back(compileRes.second);
             }
-            
         }
+
+        std::string targetTripleStr = llvm::sys::getDefaultTargetTriple();
+        llvm::Triple triple(targetTripleStr);
+        auto exePath = curArtefactDir / GetOutputName(entryPoint, triple);
+        LinkObjectFiles(exePath, objs);
     }
 
 private:
@@ -105,7 +120,7 @@ private:
         table toml = parse_file(tomlPath.string()).table();
         auto package = toml["package"].as_table();
         #define AS_STR(v, k) (*v->get_as<std::string>(k))->c_str()
-        return { AS_STR(package, "name"), tomlPath.parent_path() / AS_STR(package, "root") };
+        return { AS_STR(package, "name"), tomlPath.parent_path() / AS_STR(package, "root"), tomlPath };
         #undef AS_STR
     }
 
@@ -139,7 +154,7 @@ private:
         return imports;
     }
 
-    fs::path
+    std::pair<fs::path, fs::path> // path to main file and path to root of project
     resolvePath(const std::string &importName) {
         std::string relPath = importName;
         std::replace(relPath.begin(), relPath.end(), '.', '/');
@@ -147,23 +162,23 @@ private:
 
         fs::path localPath = _projectRoot / relPath;
         if (fs::exists(localPath)) {
-            return localPath;
+            return { localPath, _projectRoot.parent_path() };
         }
 
         return resolveImportToPath(importName);
     }
 
-    fs::path
+    std::pair<fs::path, fs::path> // path to main file and path to root of project
     resolveImportToPath(const std::string &fullImport) {
         size_t dotPos = fullImport.find('.');
         std::string packageName = (dotPos == std::string::npos) ? fullImport : fullImport.substr(0, dotPos);
         Manifest m = resolveManifest(packageName);
-        return m.MainFilePath;
+        return { m.MainFilePath, m.Path.parent_path() };
     }
 
     bool
     isBitcodeFresh(const std::string &modName) {
-        fs::path source = resolvePath(modName);
+        fs::path source = resolvePath(modName).first;
         fs::path bitcode = source.parent_path().parent_path() / "build" / "obj" / (modName + ".blmod");
         if (!fs::exists(bitcode)) {
             return false;
@@ -177,8 +192,8 @@ private:
             return;
         }
 
-        fs::path fullPath = resolvePath(modName);
-        FileNode node { .ImportName = modName, .PhysicalPath = fullPath, .Dependencies = collectImports(fullPath) };
+        auto fullPath = resolvePath(modName);
+        FileNode node { .ImportName = modName, .PhysicalPath = fullPath.first, .ProjectRootPath = fullPath.second, .Dependencies = collectImports(fullPath.first) };
         _graph[modName] = node;
         for (const auto& dep : node.Dependencies) {
             scan(dep);
