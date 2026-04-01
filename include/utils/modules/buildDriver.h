@@ -120,7 +120,7 @@ public:
             }
             else {
                 std::cout << "     [Compiling] module: " << name << '\n';
-                auto compileRes = Compile(node.PhysicalPath, objPath, node.Mod);
+                auto compileRes = Compile(_projectRoot, node.PhysicalPath, objPath, node.Mod);
                 if (!compileRes.first) {
                     exit(1);
                 }
