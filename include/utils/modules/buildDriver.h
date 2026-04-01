@@ -68,7 +68,7 @@ public:
 
     void
     BuildProj() {
-        Manifest manif = parseToml("main", _projectRoot / "bloop.toml");
+        Manifest manif = ParseToml("main", _projectRoot / "bloop.toml");
         std::cout << "Building package: " << manif.PackageName << " (" << manif.MainFilePath << ")\n";
 
         std::ifstream file(manif.MainFilePath);
@@ -137,6 +137,21 @@ public:
         std::cout << "SUCCESS: " << exePath.string() << "\n";
     }
 
+    static Manifest
+    ParseToml(const std::string &packageName, const fs::path &path) {
+        if (!fs::exists(path)) {
+            llvm::errs() << llvm::errs().RED << "Package " << packageName << " does not have manifest file (bloop.toml) at " << path << '\n' << llvm::errs().RESET;
+            exit(1);
+        }
+        
+        toml::table toml = toml::parse_file(path.string()).table();
+        
+        std::string name = toml["package"]["name"].value_or(packageName);
+        std::string root = toml["package"]["root"].value_or("src/main.bl");
+        
+        return { name, path.parent_path() / root, path };
+    }
+
 private:
     Manifest
     resolveManifest(const std::string &packageName) {
@@ -150,22 +165,7 @@ private:
         json data = json::parse(file);
         
         fs::path tomlPath = data["manifest_path"].get<std::string>();
-        return parseToml(packageName, tomlPath);
-    }
-
-    Manifest
-    parseToml(const std::string &packageName, const fs::path &path) {
-        if (!fs::exists(path)) {
-            llvm::errs() << llvm::errs().RED << "Package " << packageName << " does not have manifest file (bloop.toml) at " << path << '\n' << llvm::errs().RESET;
-            exit(1);
-        }
-        
-        toml::table toml = toml::parse_file(path.string()).table();
-        
-        std::string name = toml["package"]["name"].value_or(packageName);
-        std::string root = toml["package"]["root"].value_or("src/main.bl");
-        
-        return { name, path.parent_path() / root, path };
+        return ParseToml(packageName, tomlPath);
     }
 
     std::pair<fs::path, fs::path> // path to main file and path to root of project

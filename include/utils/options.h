@@ -7,16 +7,12 @@ namespace bloop {
     static llvm::cl::SubCommand NewSub("new", "Create a new project");
     static llvm::cl::SubCommand InitSub("init", "Initialize a project in current directory");
     static llvm::cl::SubCommand BuildSub("build", "Build the current project");
+    static llvm::cl::SubCommand RunSub("run", "Build the current project and run it");
     static llvm::cl::SubCommand FetchSub("fetch", "Update the module registry");
 
     static llvm::cl::opt<std::string> NewName(
         llvm::cl::Positional, llvm::cl::desc("<name>"), 
         llvm::cl::Required, llvm::cl::sub(NewSub)
-    );
-
-    static llvm::cl::opt<std::string> InitName(
-        llvm::cl::Positional, llvm::cl::desc("[name]"), 
-        llvm::cl::Optional, llvm::cl::sub(InitSub)
     );
     
     static llvm::cl::opt<std::string> InputFilename(
