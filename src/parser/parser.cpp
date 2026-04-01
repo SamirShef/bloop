@@ -330,9 +330,9 @@ Parser::peek(uint rpos) {
         return _tokens[_pos + rpos];
     }
     if (_tokens.size()) {
-        auto &srcMgr = _diag.GetSourceMgr();
-        unsigned bufferId = srcMgr.FindBufferContainingLoc(_tokens[0].Start);
-        const char *end = srcMgr.getBufferInfo(bufferId).Buffer->getBufferEnd();
+        auto srcMgr = _diag.GetSourceMgr();
+        unsigned bufferId = srcMgr->FindBufferContainingLoc(_tokens[0].Start);
+        const char *end = srcMgr->getBufferInfo(bufferId).Buffer->getBufferEnd();
         return Token(TkEof, "", llvm::SMLoc::getFromPointer(end), llvm::SMLoc::getFromPointer(end));
     }
     return Token(TkEof, "", llvm::SMLoc(), llvm::SMLoc());

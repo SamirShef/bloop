@@ -7,13 +7,15 @@
 namespace bloop {
 
 class Lexer {
-    DiagnosticEngine &_diag;
-    llvm::SourceMgr &_srcMgr;
-    const char *_curPtr;
+    DiagnosticEngine *_diag = nullptr;
+    llvm::SourceMgr *_srcMgr = nullptr;
+    const char *_curPtr = nullptr;
 
 public:
-    explicit Lexer(DiagnosticEngine &diag, unsigned bufferId) : _diag(diag), _srcMgr(diag.GetSourceMgr()) {
-        auto *buf = _srcMgr.getMemoryBuffer(bufferId);
+    explicit Lexer() {}
+
+    explicit Lexer(DiagnosticEngine *diag, unsigned bufferId) : _diag(diag), _srcMgr(diag->GetSourceMgr()) {
+        auto *buf = _srcMgr->getMemoryBuffer(bufferId);
         _curPtr = buf->getBufferStart();
     }
 
@@ -22,6 +24,29 @@ public:
         while (*_curPtr != '\0') {
             tokens.push_back(nextTok());
         }
+    }
+
+    std::vector<std::string>
+    PeekDependencies(std::string buffer) {
+        _curPtr = &buffer[0];
+        std::vector<Token> tokens;
+        TokenizeInto(tokens);
+
+        std::vector<std::string> dependencies;
+
+        for (int i = 0; i < tokens.size(); ++i) {
+            if (tokens[i].Kind == TkUsing) {
+                ++i;
+                std::string dependence;
+                while (tokens[i].Kind != TkSemi && tokens[i].Kind != TkEof && tokens[i].Kind != TkUnknown) {
+                    dependence += tokens[i].Val;
+                    ++i;
+                }
+                dependencies.push_back(dependence);
+            }
+        }
+        
+        return dependencies;
     }
 
 private:

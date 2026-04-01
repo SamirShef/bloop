@@ -27,9 +27,9 @@ public:
         return _errorsCount;
     }
     
-    llvm::SourceMgr &
+    llvm::SourceMgr *
     GetSourceMgr() const {
-        return _srcMgr;
+        return &_srcMgr;
     }
 };
 

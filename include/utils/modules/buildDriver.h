@@ -1,15 +1,14 @@
 #pragma once
-#include "utils/compilation.h"
+#include <utils/compilation.h>
 #include <nlohmann/json.hpp>
 #include <toml++/toml.h>
 #include <utils/compiler.h>
 #include <iostream>
 #include <fstream>
-#include <regex>
+#include <sstream>
 
 namespace fs = std::filesystem;
 using namespace nlohmann;
-using namespace toml;
 
 namespace bloop {
 
@@ -46,7 +45,8 @@ class BuildDriver {
     std::vector<std::string> _buildOrder;
 
 public:
-    BuildDriver(fs::path p, fs::path v, fs::path s, fs::path r) : _projectRoot(p), _vendorRoot(v), _stdRoot(s), _registryPath(r) {}
+    BuildDriver(fs::path p, fs::path v, fs::path s, fs::path r) 
+        : _projectRoot(p), _vendorRoot(v), _stdRoot(s), _registryPath(r) {}
 
     ~BuildDriver() {
         for (auto &[_, node] : _graph) {
@@ -54,46 +54,87 @@ public:
         }
     }
 
+    static fs::path
+    GetProjectRoot(fs::path curPath) {
+        while (curPath != curPath.root_path() && !fs::exists(curPath / "bloop.toml")) {
+            curPath = curPath.parent_path();
+        }
+        if (curPath == curPath.root_path()) {
+            llvm::errs() << llvm::errs().RED << "Manifest file 'bloop.toml' does not exist\n" << llvm::errs().RESET;
+            exit(1);
+        }
+        return curPath;
+    }
+
     void
-    Execute(const std::string &entryPoint) {
-        std::cout << "[1/3] Scanning dependencies...\n";
-        scan(entryPoint);
+    BuildProj() {
+        Manifest manif = parseToml("main", _projectRoot / "bloop.toml");
+        std::cout << "Building package: " << manif.PackageName << " (" << manif.MainFilePath << ")\n";
 
-        std::cout << "[2/3] Resolving build graph...\n";
-        sort(entryPoint);
+        std::ifstream file(manif.MainFilePath);
+        if (!file.is_open()) {
+            llvm::errs() << llvm::errs().RED << "Error: Could not open the file " << manif.MainFilePath << '\n' << llvm::errs().RESET;
+            exit(1);
+        }
+        std::stringstream ss;
+        ss << file.rdbuf();
+        Lexer lex;
+        std::vector<std::string> deps = lex.PeekDependencies(ss.str());
 
-        std::cout << "[3/3] Executing compilation pipeline:\n";
+        FileNode mainNode {
+            .ImportName = manif.PackageName,
+            .PhysicalPath = manif.MainFilePath,
+            .ProjectRootPath = manif.Path.parent_path(),
+            .Dependencies = deps
+        };
+        _graph[manif.PackageName] = mainNode;
+
+        std::cout << "[1/4] Scanning dependencies...\n";
+        for (const auto &d : deps) {
+            scan(d);
+        }
+
+        std::cout << "[2/4] Resolving build graph...\n";
+        sort(manif.PackageName); 
+
+        std::cout << "[3/4] Executing compilation pipeline:\n";
         std::vector<std::string> objs;
-        auto curArtefactDir = _projectRoot.parent_path() / "build" / "obj";
+        auto curArtefactDir = _projectRoot / "build" / "obj";
+
         for (const auto &name : _buildOrder) {
             FileNode &node = _graph[name];
             node.Mod = new Module(name, AccessModifier::Pub);
             
             auto artefactsDir = node.ProjectRootPath / "build" / "obj";
+            auto relPath = node.PhysicalPath.lexically_relative(node.ProjectRootPath);
+            auto objPath = (artefactsDir / relPath.parent_path() / (node.PhysicalPath.stem().string() + ".o")).lexically_normal();
+            auto bitcodePath = objPath;
+            bitcodePath.replace_extension(".blmod");
 
             std::cout << "  -> " << name << " (" << node.PhysicalPath.string() << ")\n";
 
-            if (isBitcodeFresh(name)) {
-                std::cout << "Loading cached module: " << name << '\n';
-                //loadBitcodeInto(node.Mod, name + ".blmod");
+            if (isArtefactFresh(node.PhysicalPath, bitcodePath) && isArtefactFresh(node.PhysicalPath, objPath)) {
+                std::cout << "     [Cached] Loading module: " << name << '\n';
+                // loadBitcodeInto(node.Mod, bitcodePath.string());
+                objs.push_back(objPath.string());
             }
             else {
-                std::cout << "Compiling module: " << name << '\n';
-                auto objPath = artefactsDir / node.PhysicalPath.lexically_relative(node.ProjectRootPath).parent_path() / (node.PhysicalPath.stem().string() + ".o");
-                objPath = objPath.lexically_normal();
+                std::cout << "     [Compiling] module: " << name << '\n';
                 auto compileRes = Compile(node.PhysicalPath, objPath, node.Mod);
                 if (!compileRes.first) {
-                    this->~BuildDriver();
                     exit(1);
                 }
                 objs.push_back(compileRes.second);
             }
         }
 
+        std::cout << "[4/4] Linking executable...\n";
         std::string targetTripleStr = llvm::sys::getDefaultTargetTriple();
         llvm::Triple triple(targetTripleStr);
-        auto exePath = curArtefactDir / GetOutputName(entryPoint, triple);
+        auto exePath = curArtefactDir / GetOutputName(manif.PackageName, triple);
         LinkObjectFiles(exePath, objs);
+        
+        std::cout << "SUCCESS: " << exePath.string() << "\n";
     }
 
 private:
@@ -102,7 +143,6 @@ private:
         fs::path registryEntry = _registryPath / (packageName + ".json");
         if (!fs::exists(registryEntry)) {
             llvm::errs() << llvm::errs().RED << "Package not found in registry: " << packageName << '\n' << llvm::errs().RESET;
-            this->~BuildDriver();
             exit(1);
         }
 
@@ -110,48 +150,22 @@ private:
         json data = json::parse(file);
         
         fs::path tomlPath = data["manifest_path"].get<std::string>();
-        
-        std::ifstream tomlFile(tomlPath);
-        if (!tomlFile.is_open()) {
-            llvm::errs() << llvm::errs().RED << "Package " << packageName << " does not have manifest file (bloop.toml)\n" << llvm::errs().RESET;
-            this->~BuildDriver();
-            exit(1);
-        }
-        table toml = parse_file(tomlPath.string()).table();
-        auto package = toml["package"].as_table();
-        #define AS_STR(v, k) (*v->get_as<std::string>(k))->c_str()
-        return { AS_STR(package, "name"), tomlPath.parent_path() / AS_STR(package, "root"), tomlPath };
-        #undef AS_STR
+        return parseToml(packageName, tomlPath);
     }
 
-    std::vector<std::string>
-    collectImports(const fs::path &filepath) {
-        std::vector<std::string> imports;
-        
-        std::ifstream file(filepath, std::ios::in | std::ios::binary);
-        if (!file) {
-            return imports;
+    Manifest
+    parseToml(const std::string &packageName, const fs::path &path) {
+        if (!fs::exists(path)) {
+            llvm::errs() << llvm::errs().RED << "Package " << packageName << " does not have manifest file (bloop.toml) at " << path << '\n' << llvm::errs().RESET;
+            exit(1);
         }
         
-        std::string content((std::istreambuf_iterator<char>(file)),
-                             std::istreambuf_iterator<char>());
+        toml::table toml = toml::parse_file(path.string()).table();
         
-        std::regex importRegex(R"(using\s+([a-zA-Z0-9_]+(?:\s*\.\s*[a-zA-Z0-9_]+)*))");
-
-        auto wordsBegin = std::sregex_iterator(content.begin(), content.end(), importRegex);
-        auto wordsEnd = std::sregex_iterator();
-
-        for (std::sregex_iterator i = wordsBegin; i != wordsEnd; ++i) {
-            std::string rawPath = (*i)[1].str();
-            
-            rawPath.erase(std::remove_if(rawPath.begin(), rawPath.end(),
-                                                 [](unsigned char c) { return isspace(c); }),
-                           rawPath.end());
-            
-            imports.push_back(rawPath);
-        }
+        std::string name = toml["package"]["name"].value_or(packageName);
+        std::string root = toml["package"]["root"].value_or("src/main.bl");
         
-        return imports;
+        return { name, path.parent_path() / root, path };
     }
 
     std::pair<fs::path, fs::path> // path to main file and path to root of project
@@ -162,7 +176,7 @@ private:
 
         fs::path localPath = _projectRoot / relPath;
         if (fs::exists(localPath)) {
-            return { localPath, _projectRoot.parent_path() };
+            return { localPath, _projectRoot };
         }
 
         return resolveImportToPath(importName);
@@ -173,17 +187,29 @@ private:
         size_t dotPos = fullImport.find('.');
         std::string packageName = (dotPos == std::string::npos) ? fullImport : fullImport.substr(0, dotPos);
         Manifest m = resolveManifest(packageName);
-        return { m.MainFilePath, m.Path.parent_path() };
+        
+        if (dotPos == std::string::npos) {
+            return { m.MainFilePath, m.Path.parent_path() };
+        }
+
+        std::string subPath = fullImport.substr(dotPos + 1);
+        std::replace(subPath.begin(), subPath.end(), '.', '/');
+        fs::path targetPath = m.Path.parent_path() / (subPath + ".bl");
+        
+        if (!fs::exists(targetPath)) {
+            llvm::errs() << llvm::errs().RED << "Module not found: " << targetPath << '\n' << llvm::errs().RESET;
+            exit(1);
+        }
+
+        return { targetPath, m.Path.parent_path() };
     }
 
     bool
-    isBitcodeFresh(const std::string &modName) {
-        fs::path source = resolvePath(modName).first;
-        fs::path bitcode = source.parent_path().parent_path() / "build" / "obj" / (modName + ".blmod");
-        if (!fs::exists(bitcode)) {
+    isArtefactFresh(const fs::path &source, const fs::path &artefact) {
+        if (!fs::exists(artefact)) {
             return false;
         }
-        return fs::last_write_time(bitcode) > fs::last_write_time(source);
+        return fs::last_write_time(artefact) > fs::last_write_time(source);
     }
 
     void
@@ -193,9 +219,25 @@ private:
         }
 
         auto fullPath = resolvePath(modName);
-        FileNode node { .ImportName = modName, .PhysicalPath = fullPath.first, .ProjectRootPath = fullPath.second, .Dependencies = collectImports(fullPath.first) };
+        
+        std::ifstream file(fullPath.first);
+        if (!file.is_open()) {
+            llvm::errs() << llvm::errs().RED << "Failed to open module file: " << fullPath.first << '\n' << llvm::errs().RESET;
+            exit(1);
+        }
+        std::stringstream ss;
+        ss << file.rdbuf();
+        Lexer lex;
+        
+        FileNode node { 
+            .ImportName = modName, 
+            .PhysicalPath = fullPath.first, 
+            .ProjectRootPath = fullPath.second, 
+            .Dependencies = lex.PeekDependencies(ss.str()) 
+        };
+        
         _graph[modName] = node;
-        for (const auto& dep : node.Dependencies) {
+        for (const auto &dep : node.Dependencies) {
             scan(dep);
         }
     }
@@ -206,7 +248,6 @@ private:
 
         if (node.State == VisitState::Visiting) {
             llvm::errs() << llvm::errs().RED << "Found circular import between `" << modName << "` and `" << node.ImportName << "`\n" << llvm::errs().RESET;
-            this->~BuildDriver();
             exit(1);
         }
         else if (node.State == VisitState::Visited) {

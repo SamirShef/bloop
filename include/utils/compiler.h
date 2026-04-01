@@ -1,4 +1,5 @@
 #pragma once
+#include <utils/options.h>
 #include <lexer/lexer.h>
 #include <parser/parser.h>
 #include <sema/sema.h>
@@ -25,7 +26,7 @@ Compile(const std::filesystem::path &filePath, const std::filesystem::path &objP
     }
     
     unsigned bufferId = srcMgr.AddNewSourceBuffer(std::move(*bufferOrErr), llvm::SMLoc());
-    Lexer lexer(diag, bufferId);
+    Lexer lexer(&diag, bufferId);
     std::vector<Token> tokens;
     lexer.TokenizeInto(tokens);
     if (diag.GetErrorsCount() > 0) {
@@ -46,14 +47,25 @@ Compile(const std::filesystem::path &filePath, const std::filesystem::path &objP
     }
     HIRContext context = sema.GetContext();
 
-    /* ASTPrinter printer(srcMgr, std::cout);
-    std::cout << '\n';
-    printer.Print(ast, Blue); */
+    if (EmitAction == EmitAST) {
+        ASTPrinter printer(srcMgr, std::cout);
+        std::cout << '\n';
+        printer.Print(ast, Blue);
+    }
 
     CodeGen codegen(mod->Name, context.GetNodes());
     llvm::Module *llvmMod = codegen.Generate();
     std::cout << '\n';
-    llvmMod->print(llvm::outs(), nullptr);
+    if (EmitAction == EmitLLVM) {
+        std::error_code ec;
+        std::filesystem::path llvmIRPath = filePath;
+        llvm::raw_fd_ostream os(llvmIRPath.replace_extension(".ll").string(), ec);
+        if (ec) {
+            llvm::errs() << llvm::errs().RED << ec.message() << llvm::errs().RESET;
+            exit(1);
+        }
+        llvmMod->print(os, nullptr);
+    }
 
     InitializeLLVMTargets();
     std::string tripleStr = llvm::sys::getDefaultTargetTriple();
