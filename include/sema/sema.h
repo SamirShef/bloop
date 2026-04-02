@@ -1,10 +1,11 @@
 #pragma once
 #include <hir/builder.h>
 #include <hir/node.h>
-#include <utils/modules/module.h>
 #include <ast/ast.h>
 #include <diag/engine.h>
 #include <utils/symbols/variable.h>
+#include <utils/modules/module.h>
+#include <utils/modules/fileNode.h>
 #include <stack>
 #include <string>
 #include <unordered_map>
@@ -16,6 +17,7 @@ class Semantic {
     std::stack<Type *> _funcsRetTypes;
     Module *&_mod;
     HIRBuilder _builder;
+    const std::unordered_map<std::string, FileNode> &_graph;
     
     struct SemanticResult {
         Value Val;
@@ -29,7 +31,8 @@ class Semantic {
     std::stack<Scope> _vars;
 
 public:
-    explicit Semantic(DiagnosticEngine &d, Module *&m) : _diag(d), _mod(m), _builder(HIRContext()) {
+    explicit Semantic(DiagnosticEngine &d, Module *&m, const std::unordered_map<std::string, FileNode> &g)
+        : _diag(d), _mod(m), _builder(HIRContext()), _graph(g) {
         _vars.push({});
     }
 
@@ -76,17 +79,65 @@ private:
     SemanticResult
     analyzeVE(VarExpr *ve);
 
-    #define FIND(t, n, map) t *n(std::string name) { \
-        auto it = _mod->map.find(name); \
-        return it == _mod->map.end() ? nullptr : &it->second; \
+    Variable *
+    findGlobVar(std::string name) {
+        auto it = _mod->Vars.find(name);
+        if (it != _mod->Vars.end()) {
+            return &it->second;
+        }
+        for (auto &[modName, modPtr] : _mod->Imports) {
+            auto impIt = modPtr->Vars.find(name);
+            if (impIt != modPtr->Vars.end() && impIt->second.Access == Pub) {
+                return &impIt->second;
+            }
+        }
+        return nullptr;
     }
 
-    FIND(Variable, findGlobVar, Vars)
-    FIND(FuncOverload, findFuncCandidates, FuncOverloads)
-    FIND(Struct, findStruct, Structs)
-    FIND(Trait, findTrait, Traits)
+    FuncOverload *
+    findFuncCandidates(std::string name) {
+        auto it = _mod->FuncOverloads.find(name);
+        if (it != _mod->FuncOverloads.end()) {
+            return &it->second;
+        }
+        for (auto &[modName, modPtr] : _mod->Imports) {
+            auto impIt = modPtr->FuncOverloads.find(name);
+            if (impIt != modPtr->FuncOverloads.end()) {
+                return &impIt->second;
+            }
+        }
+        return nullptr;
+    }
 
-    #undef FIND
+    Struct *
+    findStruct(std::string name) {
+        auto it = _mod->Structs.find(name);
+        if (it != _mod->Structs.end()) {
+            return &it->second;
+        }
+        for (auto &[modName, modPtr] : _mod->Imports) {
+            auto impIt = modPtr->Structs.find(name);
+            if (impIt != modPtr->Structs.end() && impIt->second.Access == Pub) {
+                return &impIt->second;
+            }
+        }
+        return nullptr;
+    }
+
+    Trait *
+    findTrait(std::string name) {
+        auto it = _mod->Traits.find(name);
+        if (it != _mod->Traits.end()) {
+            return &it->second;
+        }
+        for (auto &[modName, modPtr] : _mod->Imports) {
+            auto impIt = modPtr->Traits.find(name);
+            if (impIt != modPtr->Traits.end() && impIt->second.Access == Pub) {
+                return &impIt->second;
+            }
+        }
+        return nullptr;
+    }
 
     void
     createVar(std::string name, Variable var);

@@ -1,12 +1,13 @@
 #pragma once
-#include <utils/options.h>
 #include <lexer/lexer.h>
 #include <parser/parser.h>
 #include <sema/sema.h>
-#include <utils/astPrinter.h>
 #include <codegen/codegen.h>
+#include <utils/astPrinter.h>
+#include <utils/options.h>
 #include <utils/modules/module.h>
 #include <utils/compilation.h>
+#include <utils/bitcode/serializer.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/TargetParser/Host.h>
 #include <filesystem>
@@ -15,7 +16,8 @@
 namespace bloop {
 
 inline std::pair<bool, std::string>
-Compile(const std::filesystem::path &rootPath, const std::filesystem::path &filePath, const std::filesystem::path &objPath, Module *mod) {
+Compile(const std::unordered_map<std::string, FileNode> &graph, const std::filesystem::path &rootPath, const std::filesystem::path &filePath, const std::filesystem::path &objPath, Module *mod) {
+    fs::create_directories(objPath.parent_path());
     llvm::SourceMgr srcMgr;
     DiagnosticEngine diag(srcMgr);
 
@@ -40,12 +42,17 @@ Compile(const std::filesystem::path &rootPath, const std::filesystem::path &file
         return { false, "" };
     }
     
-    Semantic sema(diag, mod);
+    Semantic sema(diag, mod, graph);
     sema.Analyze(ast);
     if (diag.GetErrorsCount() > 0) {
         return { false, "" };
     }
     HIRContext context = sema.GetContext();
+
+    Serializer serializer;
+    std::filesystem::path bitcodeFile = objPath;
+    bitcodeFile.replace_extension(".blmod");
+    serializer.Serialize(mod, bitcodeFile.string());
 
     if (EmitAction == EmitAST) {
         ASTPrinter printer(srcMgr, std::cout);
@@ -60,7 +67,6 @@ Compile(const std::filesystem::path &rootPath, const std::filesystem::path &file
     std::string tripleStr = llvm::sys::getDefaultTargetTriple();
     llvm::Triple triple(tripleStr);
 
-    std::filesystem::create_directories(objPath.parent_path());
     if (!EmitObjectFile(llvmMod, objPath.string(), tripleStr)) {
         return { false, "" };
     }
@@ -76,7 +82,6 @@ Compile(const std::filesystem::path &rootPath, const std::filesystem::path &file
         llvmMod->print(os, nullptr);
         std::cout << "     [Info] LLVM IR emitted to: " << llvmIRPath.string() << '\n';
     }
-    std::cout << '\n';
 
     return { true, objPath.string() };
 }

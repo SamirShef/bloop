@@ -1,33 +1,17 @@
 #pragma once
-#include <utils/compilation.h>
 #include <nlohmann/json.hpp>
 #include <toml++/toml.h>
+#include <utils/compilation.h>
+#include <utils/bitcode/deserializer.h>
 #include <utils/compiler.h>
+#include <utils/modules/fileNode.h>
 #include <iostream>
 #include <fstream>
 #include <sstream>
 
-namespace fs = std::filesystem;
 using namespace nlohmann;
 
 namespace bloop {
-
-enum VisitState : uint8_t {
-    Unvisited,
-    Visiting,
-    Visited
-};
-
-struct FileNode {
-    std::string ImportName;
-    fs::path    PhysicalPath;
-    fs::path    ProjectRootPath;
-    VisitState  State = Unvisited;
-    
-    std::vector<std::string> Dependencies;
-    
-    Module *Mod = nullptr; 
-};
 
 struct Manifest {
     std::string PackageName;
@@ -117,17 +101,17 @@ public:
 
             if (isArtefactFresh(node.PhysicalPath, bitcodePath) && isArtefactFresh(node.PhysicalPath, objPath)) {
                 std::cout << "     [Cached] Loading module: " << name << '\n';
-                // loadBitcodeInto(node.Mod, bitcodePath.string());
                 objs.push_back(objPath.string());
             }
             else {
                 std::cout << "     [Compiling] module: " << name << '\n';
-                auto compileRes = Compile(_projectRoot, node.PhysicalPath, objPath, node.Mod);
+                auto compileRes = Compile(_graph, _projectRoot, node.PhysicalPath, objPath, node.Mod);
                 if (!compileRes.first) {
                     exit(1);
                 }
                 objs.push_back(compileRes.second);
             }
+            std::cout << '\n';
         }
 
         std::cout << "[4/4] Linking executable...\n";
