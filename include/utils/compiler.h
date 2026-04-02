@@ -1,4 +1,5 @@
 #pragma once
+#include <utils/options.h>
 #include <lexer/lexer.h>
 #include <parser/parser.h>
 #include <sema/sema.h>
@@ -14,18 +15,18 @@
 namespace bloop {
 
 inline std::pair<bool, std::string>
-Compile(const std::filesystem::path &filePath, const std::filesystem::path &objPath, Module *mod) {
+Compile(const std::filesystem::path &rootPath, const std::filesystem::path &filePath, const std::filesystem::path &objPath, Module *mod) {
     llvm::SourceMgr srcMgr;
     DiagnosticEngine diag(srcMgr);
 
     auto bufferOrErr = llvm::MemoryBuffer::getFile(filePath.string());
     if (std::error_code ec = bufferOrErr.getError()) {
-        llvm::errs() << llvm::errs().RED << "File Error (" << filePath.string() << "): " << ec.message() << '\n' << llvm::errs().RESET;
+        llvm::errs() << llvm::errs().RED << "File Error (" << filePath.lexically_relative(rootPath).lexically_normal().string() << "): " << ec.message() << '\n' << llvm::errs().RESET;
         return { false, "" };
     }
     
     unsigned bufferId = srcMgr.AddNewSourceBuffer(std::move(*bufferOrErr), llvm::SMLoc());
-    Lexer lexer(diag, bufferId);
+    Lexer lexer(&diag, bufferId);
     std::vector<Token> tokens;
     lexer.TokenizeInto(tokens);
     if (diag.GetErrorsCount() > 0) {
@@ -46,14 +47,14 @@ Compile(const std::filesystem::path &filePath, const std::filesystem::path &objP
     }
     HIRContext context = sema.GetContext();
 
-    /* ASTPrinter printer(srcMgr, std::cout);
-    std::cout << '\n';
-    printer.Print(ast, Blue); */
+    if (EmitAction == EmitAST) {
+        ASTPrinter printer(srcMgr, std::cout);
+        std::cout << '\n';
+        printer.Print(ast, Blue);
+    }
 
     CodeGen codegen(mod->Name, context.GetNodes());
     llvm::Module *llvmMod = codegen.Generate();
-    std::cout << '\n';
-    llvmMod->print(llvm::outs(), nullptr);
 
     InitializeLLVMTargets();
     std::string tripleStr = llvm::sys::getDefaultTargetTriple();
@@ -63,6 +64,19 @@ Compile(const std::filesystem::path &filePath, const std::filesystem::path &objP
     if (!EmitObjectFile(llvmMod, objPath.string(), tripleStr)) {
         return { false, "" };
     }
+
+    if (EmitAction == EmitLLVM) {
+        std::error_code ec;
+        std::filesystem::path llvmIRPath = objPath;
+        llvm::raw_fd_ostream os(llvmIRPath.replace_extension(".ll").string(), ec);
+        if (ec) {
+            llvm::errs() << llvm::errs().RED << ec.message() << llvm::errs().RESET;
+            exit(1);
+        }
+        llvmMod->print(os, nullptr);
+        std::cout << "     [Info] LLVM IR emitted to: " << llvmIRPath.string() << '\n';
+    }
+    std::cout << '\n';
 
     return { true, objPath.string() };
 }

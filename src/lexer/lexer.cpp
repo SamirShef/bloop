@@ -183,7 +183,7 @@ Lexer::tokenizeCharLit(const char *tokStart) {
 
     if (*_curPtr == '\'') {
         ++_curPtr;
-        _diag.Report(Error, "empty character literal")
+        _diag->Report(Error, "empty character literal")
             .SetCode(ErrEmptyCharLit)
             .AddSpan(LOC1(tokStart), LOC1(_curPtr));
         return TOK(TkUnknown, "", LOC1(tokStart), LOC1(_curPtr));
@@ -223,7 +223,7 @@ Lexer::tokenizeCharLit(const char *tokStart) {
     else {
         for (; *_curPtr != '\0' && *_curPtr != '\''; ++_curPtr);
         ++_curPtr;  // skip ' if contains
-        _diag.Report(Error, "a character literal expects a single code point")
+        _diag->Report(Error, "a character literal expects a single code point")
             .SetCode(ErrLongCharLit)
             .AddSpan(LOC1(tokStart), LOC1(_curPtr));
     }
@@ -432,7 +432,7 @@ Lexer::getEscapeSecuence(const char *tokStart) {
         }
         default:
             --_curPtr;
-            _diag.Report(Error, "invalid escape-sequence")
+            _diag->Report(Error, "invalid escape-sequence")
                 .SetCode(ErrInvalidEscapeSequence)
                 .AddSpan(LOC1(tokStart), LOC1(_curPtr));
             return { *tokStart };

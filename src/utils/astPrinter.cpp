@@ -137,7 +137,10 @@ ASTPrinter::printVE(VarExpr *ve) {
     printIndent();
     _out << "VarExpr ";
     printLineCol(ve->GetStartLoc());
-    _out << " '" << ve->GetName().Name << "'";
+    _out << " '" << ve->GetName().Name << "'\n";
+    if (!_indent) {
+        _out << '\n';
+    }
 }
 
 void
