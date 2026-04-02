@@ -40,6 +40,7 @@ class BuildDriver {
     fs::path _vendorRoot;
     fs::path _stdRoot;
     fs::path _registryPath;
+    fs::path _curFilePath;
 
     std::unordered_map<std::string, FileNode> _graph;
     std::vector<std::string> _buildOrder;
@@ -70,6 +71,7 @@ public:
     BuildProj() {
         Manifest manif = ParseToml("main", _projectRoot / "bloop.toml");
         std::cout << "Building package: " << manif.PackageName << " (" << manif.MainFilePath << ")\n";
+        _curFilePath = manif.MainFilePath;
 
         std::ifstream file(manif.MainFilePath);
         if (!file.is_open()) {
@@ -170,13 +172,21 @@ private:
 
     std::pair<fs::path, fs::path> // path to main file and path to root of project
     resolvePath(const std::string &importName) {
-        std::string relPath = importName;
-        std::replace(relPath.begin(), relPath.end(), '.', '/');
-        relPath += ".bl";
+        std::string pathStr = importName;
+        std::replace(pathStr.begin(), pathStr.end(), '.', '/');
+        fs::path relPath(pathStr);
+        relPath.replace_extension(".bl");
 
-        fs::path localPath = _projectRoot / relPath;
+        fs::path localPath = _curFilePath.parent_path() / relPath;
         if (fs::exists(localPath)) {
             return { localPath, _projectRoot };
+        }
+        else {
+            localPath.replace_extension("");
+            localPath = localPath / "main.bl";
+            if (fs::exists(localPath)) {
+                return { localPath, _projectRoot };
+            }
         }
 
         return resolveImportToPath(importName);
@@ -237,9 +247,12 @@ private:
         };
         
         _graph[modName] = node;
+        fs::path curFilePath = _curFilePath;
+        _curFilePath = node.PhysicalPath;
         for (const auto &dep : node.Dependencies) {
             scan(dep);
         }
+        _curFilePath = curFilePath;
     }
 
     void
