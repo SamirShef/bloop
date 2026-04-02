@@ -16,6 +16,8 @@ struct Variable {
     StorageKind     Storage;
     int             Index = -1;
 
+    explicit Variable() : Name("", llvm::SMLoc(), llvm::SMLoc()), Val(Value::GetIncorrectValue()) {}
+    
     explicit Variable(NameObj n, class Type *t, bool ic, AccessModifier a, Value v, StorageKind s = Static, int i = -1)
         : Name(n), Type(t), IsConst(ic), Access(a), Val(v), Storage(s), Index(i) {}
 };

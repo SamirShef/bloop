@@ -154,6 +154,7 @@ Semantic::analyzeFDS(FuncDeclStmt *fds) {
     }
     _vars.pop();
     fds->GetRetType() = _funcsRetTypes.top(); // if type was inferred, then should apply this change
+    candidates->Candidates[candidates->Candidates.size() - 1].RetType = fds->GetRetType();
     funcHir->GetRetType() = fds->GetRetType();
     _funcsRetTypes.pop();
 
@@ -171,7 +172,30 @@ Semantic::analyzeFDS(FuncDeclStmt *fds) {
 
 void
 Semantic::analyzeUS(UsingStmt *us) {
-    // TODO: implement
+    std::string modName = us->GetPath().Name;
+    
+    if (_mod->Imports.count(modName)) {
+        return; 
+    }
+
+    auto it = _graph.find(modName);
+    if (it == _graph.end()) {
+        _diag.Report(Error, "module '" + modName + "' not found in project graph")
+            .SetCode(ErrModNotFound)
+            .AddSpan(us->GetStartLoc(), us->GetEndLoc());
+        return;
+    }
+
+    const FileNode &node = it->second;
+
+    if (!node.Mod) {
+        _diag.Report(Error, "module '" + modName + "' is not loaded or has errors")
+            .SetCode(ErrModNotLoaded)
+            .AddSpan(us->GetStartLoc(), us->GetEndLoc());
+        return;
+    }
+
+    _mod->Imports[modName] = node.Mod;
 }
 
 void

@@ -1,7 +1,8 @@
-#include <llvm/Support/CommandLine.h>
 #include <utils/options.h>
 #include <utils/modules/buildDriver.h>
+#include <utils/modules/fileNode.h>
 #include <llvm/Support/Path.h>
+#include <llvm/Support/CommandLine.h>
 
 using namespace bloop;
 

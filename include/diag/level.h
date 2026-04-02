@@ -29,6 +29,8 @@ enum ErrorCode : uint8_t {
     ErrRedefinition,
     ErrCannotImplCast,
     ErrHasntRet,
+    ErrModNotFound,
+    ErrModNotLoaded,
 };
 
 enum WarnCode : uint8_t {
