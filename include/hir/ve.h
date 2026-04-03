@@ -1,16 +1,17 @@
 #pragma once
-#include <sys/types.h>
 #include <utils/symbols/storageKind.h>
+#include <utils/modules/module.h>
 #include <hir/node.h>
 
 namespace bloop {
 
 class HIRVarExpr : public HIRNode {
     StorageKind _kind;
-    uint _index;
+    int _index;
+    Module *_parent;
 
 public:
-    HIRVarExpr(StorageKind k, uint i) : _kind(k), _index(i), HIRNode(HIRNkVarExpr) {}
+    HIRVarExpr(StorageKind k, int i, Module *p = nullptr) : _kind(k), _index(i), _parent(p), HIRNode(HIRNkVarExpr) {}
 
     static constexpr bool
     classof(const HIRNode *node) {
@@ -22,9 +23,14 @@ public:
         return _kind;
     }
 
-    uint
+    int
     GetIndex() const {
         return _index;
+    }
+
+    Module *
+    GetParentMod() const {
+        return _parent;
     }
 };
 

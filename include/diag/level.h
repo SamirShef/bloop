@@ -37,6 +37,8 @@ enum ErrorCode : uint8_t {
     ErrNoMatchingFunction,
     ErrAmbiguousCall,
     ErrInvalidMainFuncSig,
+    ErrPrivateSymbol,
+    ErrUndeclaredSymbol,
 };
 
 enum WarnCode : uint8_t {

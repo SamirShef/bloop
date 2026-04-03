@@ -88,6 +88,12 @@ private:
     SemanticResult
     analyzeFCE(FuncCallExpr *fce);
 
+    SemanticResult
+    analyzeFE(FieldExpr *fe);
+
+    SemanticResult
+    analyzeMCE(MethodCallExpr *mce);
+
     Variable *
     findGlobVar(std::string name) {
         auto it = _mod->Vars.find(name);
@@ -108,12 +114,6 @@ private:
         auto it = _mod->FuncOverloads.find(name);
         if (it != _mod->FuncOverloads.end()) {
             return &it->second;
-        }
-        for (auto &[modName, modPtr] : _mod->Imports) {
-            auto impIt = modPtr->FuncOverloads.find(name);
-            if (impIt != modPtr->FuncOverloads.end()) {
-                return &impIt->second;
-            }
         }
         return nullptr;
     }

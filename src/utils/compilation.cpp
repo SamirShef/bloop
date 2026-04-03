@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include <utils/compilation.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/CodeGen.h>
@@ -70,7 +71,7 @@ EmitObjectFile(llvm::Module *mod, const std::string &fileName, std::string targe
     return true;
 }
 
-void
+bool
 LinkObjectFiles(const std::string &exeFile, std::vector<std::string> objFiles) {
     std::string objs;
     for (int i = 0; i < objFiles.size(); ++i) {
@@ -80,7 +81,7 @@ LinkObjectFiles(const std::string &exeFile, std::vector<std::string> objFiles) {
         }
     }
     std::string cmd = "clang " + objs + " -o " + exeFile;
-    system(cmd.c_str());
+    return system(cmd.c_str()) == EXIT_SUCCESS;
 }
 
 std::string

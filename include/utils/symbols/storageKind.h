@@ -4,6 +4,7 @@
 namespace bloop {
 
 enum StorageKind : uint8_t {
+    Extern,
     Static,
     Stack,
     Parameter,

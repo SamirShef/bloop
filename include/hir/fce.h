@@ -1,25 +1,33 @@
 #pragma once
+#include <utils/modules/module.h>
 #include <hir/node.h>
 #include <sys/types.h>
+#include <string>
 #include <vector>
 
 namespace bloop {
 
 class HIRFuncCallExpr : public HIRNode {
-    uint _index;
+    std::string _name;
     std::vector<HIRNode *> _args;
+    Module *_parent;
 
 public:
-    explicit HIRFuncCallExpr(uint i, std::vector<HIRNode *> &a) : _index(i), _args(a), HIRNode(HIRNkFuncCallExpr) {}
+    explicit HIRFuncCallExpr(std::string n, std::vector<HIRNode *> &a, Module *p = nullptr) : _name(n), _args(a), _parent(p), HIRNode(HIRNkFuncCallExpr) {}
 
-    uint
-    GetIndex() const {
-        return _index;
+    std::string
+    GetName() const {
+        return _name;
     }
 
     std::vector<HIRNode *> &
     GetArgs() {
         return _args;
+    }
+
+    Module *
+    GetParentMod() const {
+        return _parent;
     }
 };
 

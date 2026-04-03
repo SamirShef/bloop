@@ -18,10 +18,11 @@ class HIRFuncDeclStmt : public HIRNode {
     std::vector<HIRFuncArgument> _args;
     std::vector<HIRNode *> _body;
     bool _isMain;
+    bool _isDeclaration;
 
 public:
-    explicit HIRFuncDeclStmt(std::string n, Type *rt, std::vector<HIRFuncArgument> &a, bool im = false)
-        : _name(n), _retType(rt), _args(a), _isMain(im), HIRNode(HIRNkFuncDeclStmt) {}
+    explicit HIRFuncDeclStmt(std::string n, Type *rt, std::vector<HIRFuncArgument> &a, bool im = false, bool id = false)
+        : _name(n), _retType(rt), _args(a), _isMain(im), _isDeclaration(id), HIRNode(HIRNkFuncDeclStmt) {}
 
     static constexpr bool
     classof(const HIRNode *node) {
@@ -51,6 +52,11 @@ public:
     bool
     IsMain() const {
         return _isMain;
+    }
+
+    bool
+    IsDeclaration() const {
+        return _isDeclaration;
     }
 };
 

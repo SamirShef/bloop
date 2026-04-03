@@ -55,8 +55,8 @@ public:
     }
 
     HIRFuncDeclStmt *
-    CreateFunc(std::string name, Type *retType, std::vector<HIRFuncArgument> args, bool isMain = false) {
-        auto *func = _context.AddNode(new HIRFuncDeclStmt(name, retType, args, isMain));
+    CreateFunc(std::string name, Type *retType, std::vector<HIRFuncArgument> args, bool isMain = false, bool isDeclaration = false) {
+        auto *func = _context.AddNode(new HIRFuncDeclStmt(name, retType, args, isMain, isDeclaration));
         _context.SetCurFunc(func);
         return func;
     }
@@ -82,13 +82,13 @@ public:
     }
 
     HIRVarExpr *
-    CreateLoadVar(StorageKind kind, uint index) {
-        return new HIRVarExpr(kind, index);
+    CreateLoadVar(StorageKind kind, uint index, Module *parent = nullptr) {
+        return new HIRVarExpr(kind, index, parent);
     }
 
     HIRFuncCallExpr *
-    CreateCall(uint index, std::vector<HIRNode *> &args) {
-        return new HIRFuncCallExpr(index, args);
+    CreateCall(std::string name, std::vector<HIRNode *> &args, Module *parent = nullptr) {
+        return new HIRFuncCallExpr(name, args, parent);
     }
 
     HIRRetStmt *

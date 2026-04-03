@@ -31,21 +31,6 @@ Semantic::analyzeVDS(VarDeclStmt *vds) {
     Value val = exprRes.Val;
     if (vds->GetType()) {
         resolveType(&vds->GetType());
-        if (!vds->GetExpr()) {
-            switch (vds->GetType()->GetKind()) {
-                case Type::Integer:
-                    val = Value(Value::Const, ValueData((int64_t)0), vds->GetType(), llvm::SMLoc(), llvm::SMLoc());
-                    break;
-                case Type::Floating:
-                    val = Value(Value::Const, ValueData((double)0), vds->GetType(), llvm::SMLoc(), llvm::SMLoc());
-                    break;
-                default:
-                    _diag.Report(Error, "cannot get default value for this type")
-                        .SetCode(ErrCannotGetDefault)
-                        .AddSpan(vds->GetType()->GetStartLoc(), vds->GetType()->GetEndLoc());
-                    val = Value::GetIncorrectValue();
-            }
-        }
         if (vds->GetExpr()) {
             exprRes = implicitlyCast(exprRes, &vds->GetType());
         }
@@ -79,11 +64,12 @@ Semantic::analyzeVDS(VarDeclStmt *vds) {
         return;
     }
 
-    Variable var(vds->GetName(), vds->GetType(), vds->IsConst(), vds->GetAccess(), val, _vars.size() == 1 ? Static : Stack);
+    Variable var(vds->GetName(), vds->GetType(), vds->IsConst(), vds->GetAccess(), val, _vars.size() == 1 ? Static : Stack, top.Vars.size());
     if (_vars.size() == 1) {
         _mod->Vars.emplace(vds->GetName().Name, var);
     }
-    _builder.CreateVar(vds->GetName().Name, vds->GetType(), exprRes.HirNode, _vars.size() == 1 ? Static : Stack, vds->IsConst());
+    std::string mangledName = _vars.size() == 1 ? _mod->ToString() + "." + vds->GetName().Name : vds->GetName().Name;
+    _builder.CreateVar(mangledName, vds->GetType(), exprRes.HirNode, var.Storage, vds->IsConst());
     createVar(vds->GetName().Name, var);
 }
 
@@ -133,7 +119,7 @@ Semantic::analyzeFDS(FuncDeclStmt *fds) {
         candidates = &_mod->FuncOverloads.at(fds->GetName().Name);
     }
 
-    Function func(fds->GetName(), fds->GetRetType(), fds->GetArgs(), fds->GetAccess(), _mod, Static, candidates->Candidates.size());
+    Function func(fds->GetName(), fds->GetRetType(), fds->GetArgs(), fds->GetAccess(), Static, _mod);
     candidates->Candidates.push_back(func);
     std::vector<HIRFuncArgument> hirArgs;
     for (int i = 0; i < fds->GetArgs().size(); ++i) {
@@ -174,7 +160,6 @@ Semantic::analyzeFDS(FuncDeclStmt *fds) {
         _builder.CreateRet(new NothType(llvm::SMLoc(), llvm::SMLoc()), nullptr);
     }
     _builder.SetInsertionPoint(nullptr);
-
 
     if (fds->GetName().Name == "main") {
         bool correctRetType = !fds->GetRetType() || fds->GetRetType() && fds->GetRetType()->IsInteger() && fds->GetRetType()->AsInteger()->GetBitWidth() == 32;
@@ -228,6 +213,21 @@ Semantic::analyzeUS(UsingStmt *us) {
     }
 
     _mod->Imports[modName] = node.Mod;
+
+    for (auto &[name, obj] : node.Mod->Vars) {
+        _builder.CreateVar(node.Mod->ToString() + "." + name, obj.Type, nullptr, Extern);
+    }
+    for (auto &[name, candidates] : node.Mod->FuncOverloads) {
+        for (auto &c : candidates.Candidates) {
+            std::vector<HIRFuncArgument> hirArgs;
+            for (int i = 0; i < c.Args.size(); ++i) {
+                auto &a = c.Args[i];
+                hirArgs.push_back(HIRFuncArgument(a.Name.Name, a.Type, a.DefaultVal ? analyzeExpr(a.DefaultVal).HirNode : nullptr));
+            }
+            _builder.CreateFunc(c.GetMangledName(), c.RetType, hirArgs, name == "main", true);
+            _builder.SetInsertionPoint(nullptr);
+        }
+    }
 }
 
 void
@@ -266,6 +266,8 @@ Semantic::analyzeExpr(Expr *expr) {
         NODE(NkUnaryExpr, analyzeUE, UnaryExpr);
         NODE(NkVarExpr, analyzeVE, VarExpr);
         NODE(NkFuncCallExpr, analyzeFCE, FuncCallExpr);
+        NODE(NkFieldExpr, analyzeFE, FieldExpr);
+        NODE(NkMethodCallExpr, analyzeMCE, MethodCallExpr);
         default: {
             _diag.Report(Error, "compiler limitation: expression type is currently unimplemented")
                 .SetCode(ErrUnimplementedExpr)
@@ -426,6 +428,14 @@ Semantic::analyzeVE(VarExpr *ve) {
         }
         varsCopy.pop();
     }
+    if (auto it = _mod->Submods.find(ve->GetName().Name); it != _mod->Submods.end()) {
+        return { Value(Value::Unknown, ValueData(), new ModuleType(it->second, ve->GetName().Start, ve->GetName().End), ve->GetName().Start, ve->GetName().End),
+                 nullptr };
+    }
+    if (auto it = _mod->Imports.find(ve->GetName().Name); it != _mod->Imports.end()) {
+        return { Value(Value::Unknown, ValueData(), new ModuleType(it->second, ve->GetName().Start, ve->GetName().End), ve->GetName().Start, ve->GetName().End),
+                 nullptr };
+    }
     _diag.Report(Error, "variable is undeclared in this scope")
         .SetCode(ErrUndeclaredVar)
         .AddSpan(ve->GetStartLoc(), ve->GetEndLoc(), "undeclared");
@@ -463,7 +473,84 @@ Semantic::analyzeFCE(FuncCallExpr *fce) {
     }
 
     return { Value(Value::Unknown, ValueData(), bestFunc->RetType, fce->GetStartLoc(), fce->GetEndLoc()),
-             _builder.CreateCall(bestFunc->Index, hirArgs) };
+             _builder.CreateCall(bestFunc->GetMangledName(), hirArgs) };
+}
+
+Semantic::SemanticResult
+Semantic::analyzeFE(FieldExpr *fe) {
+    auto baseRes = analyzeExpr(fe->GetBase());
+    if (baseRes.Val.Type->IsModulePtr()) {
+        Module *mod = baseRes.Val.Type->AsModulePtr()->GetMod();
+        if (auto it = mod->Vars.find(fe->GetName().Name); it != mod->Vars.end()) {
+            if (it->second.Access != Pub) {
+                _diag.Report(Error, "symbol '" + fe->GetName().Name + "' is private")
+                    .SetCode(ErrPrivateSymbol)
+                    .AddSpan(fe->GetName().Start, fe->GetName().End, "private symbol")
+                    .AddHelp("consider using the 'pub' keyword to make field '" + fe->GetName().Name + "' accessible")
+                    .AddHelp("consider using a public method or API instead");
+                return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+            }
+            HIRNode *veNode = _builder.CreateLoadVar(it->second.Storage, it->second.Index, mod);
+            return { Value(Value::Unknown, ValueData(), it->second.Type, fe->GetStartLoc(), fe->GetEndLoc()), veNode };
+        }
+        _diag.Report(Error, "symbol '" + fe->GetName().Name + "' is undeclared in module '" + mod->Name + "'")
+            .SetCode(ErrUndeclaredSymbol)
+            .AddSpan(fe->GetName().Start, fe->GetName().End, "undeclared");
+        return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+    }
+    _diag.Report(Error, "symbol '" + fe->GetName().Name + "' is undeclared")
+        .SetCode(ErrUndeclaredSymbol)
+        .AddSpan(fe->GetName().Start, fe->GetName().End, "undeclared");
+    return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+}
+
+Semantic::SemanticResult
+Semantic::analyzeMCE(MethodCallExpr *mce) {
+    auto baseRes = analyzeExpr(mce->GetBase());
+    if (baseRes.Val.Type->IsModulePtr()) {
+        Module *mod = baseRes.Val.Type->AsModulePtr()->GetMod();
+        if (auto it = mod->FuncOverloads.find(mce->GetName().Name); it != mod->FuncOverloads.end()) {
+            FuncOverload *candidates = &it->second;
+            
+            std::vector<Type *> argTypes;
+            std::vector<SemanticResult> argResults;
+            
+            for (auto &a : mce->GetArgs()) {
+                auto argRes = analyzeExpr(a);
+                argResults.push_back(argRes);
+                argTypes.push_back(argRes.Val.Type);
+            }
+
+            Function *bestFunc = resolveBestOverload(candidates, argTypes, mce->GetStartLoc(), mce->GetEndLoc());
+            if (!bestFunc) {
+                return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+            }
+            if (bestFunc->Access != Pub) {
+                _diag.Report(Error, "symbol '" + mce->GetName().Name + "' is private")
+                    .SetCode(ErrPrivateSymbol)
+                    .AddSpan(mce->GetName().Start, mce->GetName().End, "private symbol")
+                    .AddHelp("consider using the 'pub' keyword to make function '" + mce->GetName().Name + "' accessible");
+                return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+            }
+
+            std::vector<HIRNode *> hirArgs;
+            for (int i = 0; i < argResults.size(); ++i) {
+                auto res = implicitlyCast(argResults[i], &bestFunc->Args[i].Type);
+                hirArgs.push_back(res.HirNode);
+            }
+
+            return { Value(Value::Unknown, ValueData(), bestFunc->RetType, mce->GetStartLoc(), mce->GetEndLoc()),
+                     _builder.CreateCall(bestFunc->GetMangledName(), hirArgs, mod) };
+        }
+        _diag.Report(Error, "symbol '" + mce->GetName().Name + "' is undeclared in module '" + mod->Name + "'")
+            .SetCode(ErrUndeclaredSymbol)
+            .AddSpan(mce->GetName().Start, mce->GetName().End, "undeclared");
+        return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+    }
+    _diag.Report(Error, "symbol '" + mce->GetName().Name + "' is undeclared")
+        .SetCode(ErrUndeclaredSymbol)
+        .AddSpan(mce->GetName().Start, mce->GetName().End, "undeclared");
+    return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
 }
 
 void
@@ -759,20 +846,20 @@ Semantic::resolveBestOverload(FuncOverload *candidates, const std::vector<Type *
 
     Function *bestCand = viableCandidates[0].first;
     int minCost = viableCandidates[0].second;
-    bool ambiguous = false;
+    bool isAmbiguous = false;
 
     for (int i = 1; i < viableCandidates.size(); ++i) {
         if (viableCandidates[i].second < minCost) {
             minCost = viableCandidates[i].second;
             bestCand = viableCandidates[i].first;
-            ambiguous = false;
+            isAmbiguous = false;
         }
         else if (viableCandidates[i].second == minCost) {
-            ambiguous = true;
+            isAmbiguous = true;
         }
     }
 
-    if (ambiguous) {
+    if (isAmbiguous) {
         _diag.Report(Error, "call is ambiguous")
             .SetCode(ErrAmbiguousCall)
             .AddSpan(start, end);

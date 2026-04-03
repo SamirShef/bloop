@@ -21,11 +21,12 @@ CodeGen::generateNode(HIRNode *node) {
 void
 CodeGen::generateVDS(HIRVarDeclStmt *vds) {
     llvm::Value *var = nullptr;
-    llvm::Value *val = vds->GetExpr() ? generateExpr(vds->GetExpr()) : llvm::ConstantExpr::getNullValue(getType(vds->GetType()));
+    llvm::Value *val = vds->GetExpr() ? generateExpr(vds->GetExpr()) : (vds->GetStorageKind() == Extern ? nullptr : llvm::ConstantExpr::getNullValue(getType(vds->GetType())));
     switch (vds->GetStorageKind()) {
+        case Extern:
         case Static: {
             var = new llvm::GlobalVariable(*_module, getType(vds->GetType()), vds->IsConst(), llvm::GlobalValue::ExternalLinkage,
-                                           llvm::cast<llvm::Constant>(val), vds->GetName());
+                                           val ? llvm::cast<llvm::Constant>(val) : nullptr, vds->GetName());
             _globals.push_back(llvm::cast<llvm::GlobalVariable>(var));
             break;
         }
@@ -59,6 +60,10 @@ CodeGen::generateFDS(HIRFuncDeclStmt *fds) {
     for (auto &a : func->args()) {
         a.setName(fds->GetArgs()[i].Name);
         ++i;
+    }
+
+    if (fds->IsDeclaration()) {
+        return;
     }
 
     llvm::BasicBlock *entry = llvm::BasicBlock::Create(_context, "entry", func);
@@ -316,14 +321,14 @@ CodeGen::generateCast(HIRCastNode *cast) {
 
 llvm::Value *
 CodeGen::generateFCE(HIRFuncCallExpr *fce) {
-    llvm::Function *func = _funcs[fce->GetIndex()];
+    llvm::Function *func = _module->getFunction(fce->GetName());
     std::vector<llvm::Value *> args(fce->GetArgs().size());
 
     for (int i = 0; i < args.size(); ++i) {
         args[i] = generateExpr(fce->GetArgs()[i]);
     }
     
-    return _builder.CreateCall(func, args, func->getName().str() + ".call");
+    return _builder.CreateCall(func, args, fce->GetName() + ".call");
 }
 
 llvm::Type *

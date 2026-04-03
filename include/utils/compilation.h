@@ -9,7 +9,7 @@ InitializeLLVMTargets();
 bool
 EmitObjectFile(llvm::Module *mod, const std::string &fileName, std::string targetTripleStr);
 
-void
+bool
 LinkObjectFiles(const std::string &exeFile, std::vector<std::string> objFiles);
 
 std::string
