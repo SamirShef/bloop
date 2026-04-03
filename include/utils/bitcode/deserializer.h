@@ -29,7 +29,12 @@ public:
         }
 
         while (!cursor.AtEndOfStream()) {
-            auto entry = cursor.advance().get();
+            auto entryOrErr = cursor.advance();
+            if (!entryOrErr) {
+                llvm::consumeError(entryOrErr.takeError());
+                break;
+            }
+            auto entry = entryOrErr.get();
             if (entry.Kind != llvm::BitstreamEntry::SubBlock) {
                 continue;
             }
@@ -71,7 +76,12 @@ private:
         }
 
         while (!cursor.AtEndOfStream()) {
-            auto entry = cursor.advance().get();
+            auto entryOrErr = cursor.advance();
+            if (!entryOrErr) {
+                llvm::consumeError(entryOrErr.takeError());
+                break;
+            }
+            auto entry = entryOrErr.get();
             
             if (entry.Kind == llvm::BitstreamEntry::EndBlock) {
                 break;
@@ -94,18 +104,47 @@ private:
                 mod->Access = static_cast<AccessModifier>(record[1]);
             }
             else if (code == SymVar && mod) {
-                llvm::SMLoc emptyLoc;
-                
-                NameObj name(_strPool[record[0]], emptyLoc, emptyLoc);
-                Type *type = _parsedTypes[record[1]];
-                bool isConst = static_cast<bool>(record[2]);
-                AccessModifier access = static_cast<AccessModifier>(record[3]);
-                StorageKind storage = static_cast<StorageKind>(record[4]);
-
-                Variable v(name, type, isConst, access, Value::GetIncorrectValue(), storage);
-                mod->Vars[name.Name] = v;
+                deserializeVar(mod, record);
+            }
+            else if (code == SymFunc && mod) {
+                deserializeFunc(mod, record);
             }
         }
+    }
+
+    void
+    deserializeVar(Module *mod, llvm::SmallVector<uint64_t, 64> &record) {
+        llvm::SMLoc emptyLoc;
+        
+        NameObj name(_strPool[record[0]], emptyLoc, emptyLoc);
+        Type *type = _parsedTypes[record[1]];
+        bool isConst = static_cast<bool>(record[2]);
+        AccessModifier access = static_cast<AccessModifier>(record[3]);
+        StorageKind storage = static_cast<StorageKind>(record[4]);
+        int index = static_cast<int>(record[5]);
+
+        Variable v(name, type, isConst, access, Value::GetIncorrectValue(), storage, index);
+        mod->Vars[name.Name] = v;
+    }
+
+    void
+    deserializeFunc(Module *mod, llvm::SmallVector<uint64_t, 64> &record) {
+        llvm::SMLoc emptyLoc;
+        
+        NameObj name(_strPool[record[0]], emptyLoc, emptyLoc);
+        Type *retType = _parsedTypes[record[1]];
+        AccessModifier access = static_cast<AccessModifier>(record[2]);
+        StorageKind storage = static_cast<StorageKind>(record[3]);
+        int argsCount = static_cast<int>(record[4]);
+        std::vector<Argument> args;
+        for (int i = 0; i < argsCount; ++i) {
+            NameObj argName("", emptyLoc, emptyLoc);
+            Type *argType = _parsedTypes[record[5 + i]];
+            args.push_back(Argument(argName, argType));
+        }
+
+        Function func(name, retType, args, access, storage, mod);
+        mod->FuncOverloads[name.Name].Candidates.push_back(func);
     }
 
     void

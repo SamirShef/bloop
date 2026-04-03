@@ -24,6 +24,12 @@ class Semantic {
         HIRNode *HirNode;
     };
 
+    enum CastCost {
+        Exact = 0,
+        SafeImplicit = 1,
+        Incompatible = 1000
+    };
+
     struct Scope {
         std::unordered_map<std::string, int> VarsMap;
         std::vector<Variable> Vars;
@@ -79,6 +85,15 @@ private:
     SemanticResult
     analyzeVE(VarExpr *ve);
 
+    SemanticResult
+    analyzeFCE(FuncCallExpr *fce);
+
+    SemanticResult
+    analyzeFE(FieldExpr *fe);
+
+    SemanticResult
+    analyzeMCE(MethodCallExpr *mce);
+
     Variable *
     findGlobVar(std::string name) {
         auto it = _mod->Vars.find(name);
@@ -99,12 +114,6 @@ private:
         auto it = _mod->FuncOverloads.find(name);
         if (it != _mod->FuncOverloads.end()) {
             return &it->second;
-        }
-        for (auto &[modName, modPtr] : _mod->Imports) {
-            auto impIt = modPtr->FuncOverloads.find(name);
-            if (impIt != modPtr->FuncOverloads.end()) {
-                return &impIt->second;
-            }
         }
         return nullptr;
     }
@@ -153,6 +162,12 @@ private:
 
     SemanticResult
     implicitlyCast(SemanticResult res, Type **expectedType);
+
+    CastCost
+    checkCastCost(Type *src, Type *dst);
+
+    Function *
+    resolveBestOverload(FuncOverload *candidates, const std::vector<Type *> &argTypes, llvm::SMLoc start, llvm::SMLoc end);
 
     HIRBinaryKind
     tokenKindToHIRBk(TokenKind kind);

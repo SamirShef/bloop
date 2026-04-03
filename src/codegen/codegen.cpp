@@ -21,11 +21,12 @@ CodeGen::generateNode(HIRNode *node) {
 void
 CodeGen::generateVDS(HIRVarDeclStmt *vds) {
     llvm::Value *var = nullptr;
-    llvm::Value *val = vds->GetExpr() ? generateExpr(vds->GetExpr()) : llvm::ConstantExpr::getNullValue(getType(vds->GetType()));
+    llvm::Value *val = vds->GetExpr() ? generateExpr(vds->GetExpr()) : (vds->GetStorageKind() == Extern ? nullptr : llvm::ConstantExpr::getNullValue(getType(vds->GetType())));
     switch (vds->GetStorageKind()) {
+        case Extern:
         case Static: {
             var = new llvm::GlobalVariable(*_module, getType(vds->GetType()), vds->IsConst(), llvm::GlobalValue::ExternalLinkage,
-                                           llvm::cast<llvm::Constant>(val), vds->GetName());
+                                           val ? llvm::cast<llvm::Constant>(val) : nullptr, vds->GetName());
             _globals.push_back(llvm::cast<llvm::GlobalVariable>(var));
             break;
         }
@@ -33,7 +34,7 @@ CodeGen::generateVDS(HIRVarDeclStmt *vds) {
             var = _builder.CreateAlloca(getType(vds->GetType()), nullptr, vds->GetName());
             _builder.CreateStore(val, var);
             auto funcName = _builder.GetInsertBlock()->getParent()->getName().str();
-            auto &func = _funcs.at(funcName);
+            auto &func = _funcsMap.at(funcName);
             func.Locals.push_back(llvm::cast<llvm::AllocaInst>(var));
             break;
         }
@@ -42,22 +43,27 @@ CodeGen::generateVDS(HIRVarDeclStmt *vds) {
 
 void
 CodeGen::generateFDS(HIRFuncDeclStmt *fds) {
-    std::string name = fds->GetName();
-    for (auto &a : fds->GetArgs()) {
-        name += a.Type->ToString();
-    }
     std::vector<llvm::Type *> args(fds->GetArgs().size());
     for (int i = 0; i < fds->GetArgs().size(); ++i) {
         args[i] = getType(fds->GetArgs()[i].Type);
     }
     llvm::FunctionType *funcType = llvm::FunctionType::get(getType(fds->GetRetType()), args, false);
-    llvm::Function *func = llvm::Function::Create(funcType, llvm::GlobalValue::ExternalLinkage, name, *_module);
-    _funcs.emplace(name, Function { func });
+    llvm::Function *func = llvm::Function::Create(funcType, llvm::GlobalValue::ExternalLinkage, fds->GetName(), *_module);
+    _funcsMap.emplace(fds->GetName(), Function { func });
+    _funcs.push_back(func);
 
+    if (fds->IsMain()) {
+        _userMainFunc = func;
+    }
+    
     int i = 0;
     for (auto &a : func->args()) {
         a.setName(fds->GetArgs()[i].Name);
         ++i;
+    }
+
+    if (fds->IsDeclaration()) {
+        return;
     }
 
     llvm::BasicBlock *entry = llvm::BasicBlock::Create(_context, "entry", func);
@@ -77,6 +83,34 @@ CodeGen::generateRS(HIRRetStmt *rs) {
     }
 }
 
+void
+CodeGen::generateImplicitMain() {
+    llvm::Type *argcType = _builder.getInt32Ty();
+    llvm::Type *argvType = _builder.getPtrTy();
+    
+    llvm::FunctionType *mainType = llvm::FunctionType::get(argcType, { argcType, argvType }, false);
+    llvm::Function *main = llvm::Function::Create(mainType, llvm::GlobalValue::ExternalLinkage, "main", *_module);
+    main->arg_begin()->setName("argc");
+    (main->arg_begin() + 1)->setName("argv");
+    
+    llvm::BasicBlock *entry = llvm::BasicBlock::Create(_context, "entry", main);
+    _builder.SetInsertPoint(entry);
+    llvm::Value *retVal = _builder.CreateCall(_userMainFunc, { main->arg_begin(), main->arg_begin() + 1 });
+    
+    if (_userMainFunc->getReturnType()->isVoidTy()) {
+        _builder.CreateRet(_builder.getInt32(0));
+    }
+    else {
+        if (_userMainFunc->getReturnType()->getIntegerBitWidth() > 32) {
+            retVal = _builder.CreateTrunc(retVal, argcType, "trunc.tmp");
+        }
+        else if (_userMainFunc->getReturnType()->getIntegerBitWidth() < 32) {
+            retVal = _builder.CreateSExt(retVal, argcType, "sext.tmp");
+        }
+        _builder.CreateRet(retVal);
+    }
+}
+
 llvm::Value *
 CodeGen::generateExpr(HIRNode *expr) {
     #define NODE(k, f, t) case k: return f(static_cast<t *>(expr));
@@ -86,6 +120,7 @@ CodeGen::generateExpr(HIRNode *expr) {
         NODE(HIRNkUnaryExpr, generateUE, HIRUnaryExpr);
         NODE(HIRNkVarExpr, generateVE, HIRVarExpr);
         NODE(HIRNkCast, generateCast, HIRCastNode);
+        NODE(HIRNkFuncCallExpr, generateFCE, HIRFuncCallExpr);
     }
     #undef NODE
 }
@@ -241,7 +276,7 @@ CodeGen::generateVE(HIRVarExpr *ve) {
         }
         case Stack: {
             auto funcName = _builder.GetInsertBlock()->getParent()->getName().str();
-            auto func = _funcs.at(funcName);
+            auto func = _funcsMap.at(funcName);
             auto *var = func.Locals[ve->GetIndex()];
             auto *load = _builder.CreateLoad(var->getAllocatedType(), var, var->getName() + ".load");
             return load;
@@ -282,6 +317,18 @@ CodeGen::generateCast(HIRCastNode *cast) {
         case FPExtend:
             return _builder.CreateFPExt(expr, getType(cast->GetToType()), "fpext.tmp");
     }
+}
+
+llvm::Value *
+CodeGen::generateFCE(HIRFuncCallExpr *fce) {
+    llvm::Function *func = _module->getFunction(fce->GetName());
+    std::vector<llvm::Value *> args(fce->GetArgs().size());
+
+    for (int i = 0; i < args.size(); ++i) {
+        args[i] = generateExpr(fce->GetArgs()[i]);
+    }
+    
+    return _builder.CreateCall(func, args, fce->GetName() + ".call");
 }
 
 llvm::Type *

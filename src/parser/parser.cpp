@@ -196,8 +196,18 @@ Parser::parsePrefixExpr(bool allowStruct) {
             return new UnaryExpr(tok, parsePrefixExpr(allowStruct), tok.Start, peek().End);
         }
 
-        case TkId:
+        case TkId: {
+            if (peek().Kind == TkDot) {
+                Expr *expr = new VarExpr(tok);
+                return parseChain(expr);
+            }
+            else if (expect(TkLParen)) {
+                std::vector<Expr *> args;
+                parseArgsInto(args);
+                return new FuncCallExpr(tok, args, peek(-1).End);
+            }
             return new VarExpr(tok);
+        }
     }
     _diag.Report(Error, "expected expression")
         .SetCode(ErrExpectedExpr)
@@ -221,6 +231,42 @@ Parser::parseExpr(int minPrec, bool allowStruct) {
     }
 
     return lhs;
+}
+
+Expr *
+Parser::parseChain(Expr *base) {
+    while (expect(TkDot)) {
+        const Token id = advance();
+        if (id.Kind != TkId) {
+            _diag.Report(Error, "expected identifier")
+                .SetCode(ErrExpectedId)
+                .AddSpan(id.Start, id.End);
+        }
+        NameObj name = id;
+        if (expect(TkLParen)) {
+            std::vector<Expr *> args;
+            parseArgsInto(args);
+            base = new MethodCallExpr(base, name, args, peek(-1).End);
+        }
+        else {
+            base = new FieldExpr(base, name);
+        }
+    }
+    return base;
+}
+
+void
+Parser::parseArgsInto(std::vector<Expr *> &args) {
+    while (!expect(TkRParen)) {
+        args.push_back(parseExpr());
+        if (peek().Kind != TkRParen) {
+            if (!expect(TkComma)) {
+                _diag.Report(Error, "expected ','")
+                    .SetCode(ErrExpectedToken)
+                    .AddSpan(peek().Start, peek().End);
+            }
+        }
+    }
 }
 
 Argument

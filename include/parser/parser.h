@@ -46,6 +46,12 @@ private:
 
     Expr *
     parseExpr(int minPrec = PrecLowest, bool allowStruct = true);
+
+    Expr *
+    parseChain(Expr *base);
+
+    void
+    parseArgsInto(std::vector<Expr *> &args);
     
     Argument
     parseArgument();

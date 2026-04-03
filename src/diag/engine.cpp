@@ -66,7 +66,7 @@ DiagnosticEngine::Emit(const Diagnostic &diag) {
         os.changeColor(llvm::raw_ostream::CYAN);
         os << "    --> ";
         os.resetColor();
-        os << _srcMgr.getBufferInfo(bufId).Buffer->getBufferIdentifier() 
+        os << _srcMgr.getBufferInfo(bufId).Buffer->getBufferIdentifier()
            << ":" << lineCol.first << ":" << lineCol.second << '\n';
 
         const char *ptr = span.Start.getPointer();

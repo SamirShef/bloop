@@ -29,15 +29,12 @@ enum TypeRecordIDs {
 };
 
 enum RecordIDs {
-    // String Pool
-    StrEntry    = 1,
-    // Module
-    ModInfo     = 1,
-    // Symbols
-    SymVar      = 1,
-    SymFunc     = 2,
-    SymStruct   = 3,
-    SymTrait    = 4
+    StrEntry = 1,
+    ModInfo,
+    SymVar,
+    SymFunc,
+    SymStruct,
+    SymTrait
 };
 
 class Serializer {
@@ -113,27 +110,71 @@ public:
         w.Emit((unsigned char)'L', 8);
         w.Emit((unsigned char)'B', 8);
 
-        collectStrings(root);
+        collectStringsAndTypes(root);
         writeStringPool(w);
+        writeTypePool(w);
+        
         serializeModule(w, root);
 
         os.write((const char *)buffer.data(), buffer.size());
     }
 
+private:
     void
-    CollectStringsAndTypes(const Module *mod) {
+    collectStrings(const Module *mod) {
+        _strPool.GetID(mod->Name);
+        for (auto &[name, var] : mod->Vars) {
+            _strPool.GetID(var.Name.Name);
+            _strPool.GetID(var.Type->ToString());
+        }
+
+        for (auto &[name, mod] : mod->Imports) {
+            collectStrings(mod);
+        }
+        for (auto &[name, mod] : mod->Submods) {
+            collectStrings(mod);
+        }
+    }
+
+    void
+    collectStringsAndTypes(const Module *mod) {
         _strPool.GetID(mod->Name);
         for (auto &[name, var] : mod->Vars) {
             _strPool.GetID(var.Name.Name);
             _typesPool.GetID(var.Type);
         }
-        for (auto &[name, sub] : mod->Submods) {
-            CollectStringsAndTypes(sub);
+        for (auto &[name, candidates] : mod->FuncOverloads) {
+            for (auto &func : candidates.Candidates) {
+                _strPool.GetID(func.Name.Name);
+                _typesPool.GetID(func.RetType);
+                for (auto &a : func.Args) {
+                    _typesPool.GetID(a.Type);
+                }
+            }
+        }
+        for (auto &[name, mod] : mod->Imports) {
+            collectStringsAndTypes(mod);
+        }
+        for (auto &[name, mod] : mod->Submods) {
+            collectStringsAndTypes(mod);
         }
     }
 
     void
-    WriteTypePool(llvm::BitstreamWriter &w) {
+    writeStringPool(llvm::BitstreamWriter &w) {
+        w.EnterSubblock(StrPoolBlockID, 3);
+        for (const auto &s : _strPool.Strings) {
+            llvm::SmallVector<uint64_t, 64> record;
+            for (char c : s) {
+                record.push_back(static_cast<uint64_t>(c));
+            }
+            w.EmitRecord(StrEntry, record);
+        }
+        w.ExitBlock();
+    }
+
+    void
+    writeTypePool(llvm::BitstreamWriter &w) {
         if (_typesPool.Types.empty()) {
             return;
         }
@@ -187,33 +228,6 @@ public:
         w.ExitBlock();
     }
 
-private:
-    void
-    collectStrings(const Module *mod) {
-        _strPool.GetID(mod->Name);
-        for (auto &[name, var] : mod->Vars) {
-            _strPool.GetID(var.Name.Name);
-            _strPool.GetID(var.Type->ToString());
-        }
-
-        for (auto &[name, sub] : mod->Submods) {
-            collectStrings(sub);
-        }
-    }
-
-    void
-    writeStringPool(llvm::BitstreamWriter &w) {
-        w.EnterSubblock(StrPoolBlockID, 3);
-        for (const auto &s : _strPool.Strings) {
-            llvm::SmallVector<uint64_t, 64> record;
-            for (char c : s) {
-                record.push_back(static_cast<uint64_t>(c));
-            }
-            w.EmitRecord(StrEntry, record);
-        }
-        w.ExitBlock();
-    }
-
     void
     serializeModule(llvm::BitstreamWriter &w, const Module *mod) {
         w.EnterSubblock(ModBlockID, 4);
@@ -224,22 +238,51 @@ private:
         };
         w.EmitRecord(ModInfo, modRec);
 
-        for (auto &[name, v] : mod->Vars) {
+        serializeVars(w, mod->Vars);
+        serializeFuncs(w, mod->FuncOverloads);
+
+        for (auto &[name, mod] : mod->Imports) {
+            serializeModule(w, mod);
+        }
+        for (auto &[name, mod] : mod->Submods) {
+            serializeModule(w, mod);
+        }
+
+        w.ExitBlock();
+    }
+
+    void
+    serializeVars(llvm::BitstreamWriter &w, const std::unordered_map<std::string, Variable> &vars) {
+        for (auto &[name, v] : vars) {
             llvm::SmallVector<uint64_t, 8> varRec = {
                 static_cast<uint64_t>(_strPool.GetID(v.Name.Name)),
                 static_cast<uint64_t>(_typesPool.GetID(v.Type)),
                 static_cast<uint64_t>(v.IsConst),
                 static_cast<uint64_t>(v.Access),
-                static_cast<uint64_t>(v.Storage)
+                static_cast<uint64_t>(v.Storage),
+                static_cast<uint64_t>(v.Index)
             };
             w.EmitRecord(SymVar, varRec);
         }
+    }
 
-        for (auto &[name, sub] : mod->Submods) {
-            serializeModule(w, sub);
+    void
+    serializeFuncs(llvm::BitstreamWriter &w, const std::unordered_map<std::string, FuncOverload> &overloads) {
+        for (auto &[name, candidates] : overloads) {
+            for (auto &f : candidates.Candidates) {
+                llvm::SmallVector<uint64_t, 8> funcRec = {
+                    static_cast<uint64_t>(_strPool.GetID(f.Name.Name)),
+                    static_cast<uint64_t>(_typesPool.GetID(f.RetType)),
+                    static_cast<uint64_t>(f.Access),
+                    static_cast<uint64_t>(f.Storage),
+                    static_cast<uint64_t>(f.Args.size())
+                };
+                for (auto &a : f.Args) {
+                    funcRec.push_back(static_cast<uint64_t>(_typesPool.GetID(a.Type)));
+                }
+                w.EmitRecord(SymFunc, funcRec);
+            }
         }
-
-        w.ExitBlock();
     }
 };
 

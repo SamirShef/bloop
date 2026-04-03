@@ -8,3 +8,6 @@
 #include <ast/exprs/le.h>
 #include <ast/exprs/ue.h>
 #include <ast/exprs/ve.h>
+#include <ast/exprs/fe.h>
+#include <ast/exprs/fce.h>
+#include <ast/exprs/mce.h>

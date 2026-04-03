@@ -1,6 +1,7 @@
 #pragma once
 #include <nlohmann/json.hpp>
 #include <toml++/toml.h>
+#include <unordered_set>
 #include <utils/compilation.h>
 #include <utils/bitcode/deserializer.h>
 #include <utils/compiler.h>
@@ -87,9 +88,11 @@ public:
         std::vector<std::string> objs;
         auto curArtefactDir = _projectRoot / "build" / "obj";
 
+        std::unordered_set<std::string> recompiledModules;
+
         for (const auto &name : _buildOrder) {
             FileNode &node = _graph[name];
-            node.Mod = new Module(name, AccessModifier::Pub);
+            node.Mod = new Module(name, Pub);
             
             auto artefactsDir = node.ProjectRootPath / "build" / "obj";
             auto relPath = node.PhysicalPath.lexically_relative(node.ProjectRootPath);
@@ -99,8 +102,36 @@ public:
 
             std::cout << "  -> " << name << " (" << node.PhysicalPath.string() << ")\n";
 
-            if (isArtefactFresh(node.PhysicalPath, bitcodePath) && isArtefactFresh(node.PhysicalPath, objPath)) {
+            bool depsRecompiled = false;
+            for (const auto &dep : node.Dependencies) {
+                if (recompiledModules.count(dep)) {
+                    depsRecompiled = true;
+                    break;
+                }
+            }
+
+            bool isFresh = !depsRecompiled &&
+                           isArtefactFresh(node.PhysicalPath, bitcodePath) &&
+                           isArtefactFresh(node.PhysicalPath, objPath);
+
+            if (isFresh) {
+                for (const auto &dep : node.Dependencies) {
+                    FileNode &depNode = _graph[dep];
+                    auto depArtefactsDir = depNode.ProjectRootPath / "build" / "obj";
+                    auto depRelPath = depNode.PhysicalPath.lexically_relative(depNode.ProjectRootPath);
+                    auto depBitcodePath = (depArtefactsDir / depRelPath.parent_path() / (depNode.PhysicalPath.stem().string() + ".blmod")).lexically_normal();
+                    
+                    if (fs::exists(depBitcodePath) && fs::last_write_time(objPath) < fs::last_write_time(depBitcodePath)) {
+                        isFresh = false;
+                        break;
+                    }
+                }
+            }
+
+            if (isFresh) {
                 std::cout << "     [Cached] Loading module: " << name << '\n';
+                Deserializer deserializer;
+                deserializer.DeserializeInto(node.Mod, bitcodePath.string());
                 objs.push_back(objPath.string());
             }
             else {
@@ -118,9 +149,9 @@ public:
         std::string targetTripleStr = llvm::sys::getDefaultTargetTriple();
         llvm::Triple triple(targetTripleStr);
         auto exePath = curArtefactDir / GetOutputName(manif.PackageName, triple);
-        LinkObjectFiles(exePath, objs);
-        
-        std::cout << "SUCCESS: " << exePath.string() << "\n";
+        if (LinkObjectFiles(exePath, objs)) {
+            std::cout << "SUCCESS: " << exePath.string() << "\n";
+        }
     }
 
     static Manifest
