@@ -30,6 +30,9 @@ class BuildDriver {
     std::unordered_map<std::string, FileNode> _graph;
     std::vector<std::string> _buildOrder;
 
+    using Clock = std::chrono::high_resolution_clock;
+    using TimePoint = std::chrono::time_point<Clock>;
+
 public:
     BuildDriver(fs::path p, fs::path v, fs::path s, fs::path r) 
         : _projectRoot(p), _vendorRoot(v), _stdRoot(s), _registryPath(r) {}
@@ -54,6 +57,7 @@ public:
 
     void
     BuildProj() {
+        auto startTotal = Clock::now();
         Manifest manif = ParseToml("main", _projectRoot / "bloop.toml");
         std::cout << "Building package: " << manif.PackageName << " (" << manif.MainFilePath << ")\n";
         _curFilePath = manif.MainFilePath;
@@ -76,14 +80,17 @@ public:
         };
         _graph[manif.PackageName] = mainNode;
 
+        auto startScan = Clock::now();
         std::cout << "[1/4] Scanning dependencies...\n";
         for (const auto &d : deps) {
             scan(d);
         }
 
+        auto startSort = Clock::now();
         std::cout << "[2/4] Resolving build graph...\n";
         sort(manif.PackageName); 
 
+        auto startComp = Clock::now();
         std::cout << "[3/4] Executing compilation pipeline:\n";
         std::vector<std::string> objs;
         auto curArtefactDir = _projectRoot / "build" / "obj";
@@ -91,6 +98,7 @@ public:
         std::unordered_set<std::string> recompiledModules;
 
         for (const auto &name : _buildOrder) {
+            auto startMod = Clock::now();
             FileNode &node = _graph[name];
             node.Mod = new Module(name, Pub);
             
@@ -135,22 +143,30 @@ public:
                 objs.push_back(objPath.string());
             }
             else {
-                std::cout << "     [Compiling] module: " << name << '\n';
+                std::cout << "     [Compiling] Module: " << name << '\n';
                 auto compileRes = Compile(_graph, _projectRoot, node.PhysicalPath, objPath, node.Mod);
                 if (!compileRes.first) {
                     exit(1);
                 }
                 objs.push_back(compileRes.second);
             }
+            auto endMod = Clock::now();
+            std::cout << "     [Info] Time left: ";
+            printDuration(startMod, endMod);
             std::cout << '\n';
         }
 
+        auto startLink = Clock::now();
         std::cout << "[4/4] Linking executable...\n";
         std::string targetTripleStr = llvm::sys::getDefaultTargetTriple();
         llvm::Triple triple(targetTripleStr);
         auto exePath = curArtefactDir / GetOutputName(manif.PackageName, triple);
         if (LinkObjectFiles(exePath, objs)) {
-            std::cout << "SUCCESS: " << exePath.string() << "\n";
+            auto endTotal = Clock::now();
+            llvm::outs() << llvm::outs().GREEN << "SUCCESS: " << llvm::outs().RESET << exePath.string() << "\n";
+            std::cout << std::string(std::string("SUCCESS: ").length() + exePath.string().length(), '-') << '\n';
+            std::cout << "Total build time: ";
+            printDuration(startTotal, endTotal, true);
         }
     }
 
@@ -170,6 +186,26 @@ public:
     }
 
 private:
+    void
+    printDuration(TimePoint start, TimePoint end, bool highlight = false) {
+        auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+        if (highlight) {
+            std::cout << "\033[1;32m";
+        }
+        
+        if (diff < 1000) {
+            std::cout << diff << "ms";
+        }
+        else {
+            std::cout << std::fixed << std::setprecision(2) << diff / 1000.0 << "s";
+        }
+        
+        if (highlight) {
+            std::cout << "\033[0m";
+        }
+        std::cout << '\n';
+    }
+
     Manifest
     resolveManifest(const std::string &packageName) {
         fs::path registryEntry = _registryPath / (packageName + ".json");

@@ -12,6 +12,9 @@ createNewProj(const std::string &name);
 int
 initProj(const std::string &name);
 
+void
+clearArtefacts(fs::path projectRoot, const std::string &projectName);
+
 int
 main(int argc, char **argv) {
     llvm::cl::HideUnrelatedOptions(Category);
@@ -52,6 +55,11 @@ main(int argc, char **argv) {
     }
     else if (InitSub) {
         return initProj(fs::current_path().stem().string());
+    }
+    else if (ClearSub) {
+        fs::path projectRoot = BuildDriver::GetProjectRoot(fs::current_path());
+        auto m = BuildDriver::ParseToml(projectRoot.stem().string(), projectRoot / "bloop.toml");
+        clearArtefacts(projectRoot, m.PackageName);
     }
     else if (FetchSub) {
         llvm::errs() << llvm::errs().RED << "Compiler limitation: option 'fetch ' is currently unimplemented\n" << llvm::errs().RESET;
@@ -105,4 +113,16 @@ initProj(const std::string &name) {
         return 1;
     }
     return 0;
+}
+
+void
+clearArtefacts(fs::path projectRoot, const std::string &projectName) {
+    fs::path artefactsDir = projectRoot / "build" / "obj";
+    if (fs::exists(artefactsDir)) {
+        fs::remove_all(artefactsDir);
+    }
+    fs::path binaryPath = projectRoot / "build" / projectName;
+    if (fs::exists(binaryPath)) {
+        fs::remove(binaryPath);
+    }
 }
