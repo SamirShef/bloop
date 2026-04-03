@@ -16,6 +16,11 @@ Semantic::analyzeStmt(Stmt *stmt) {
         NODE(NkFuncDeclStmt, analyzeFDS, FuncDeclStmt);
         NODE(NkUsingStmt, analyzeUS, UsingStmt);
         NODE(NkRetStmt, analyzeRS, RetStmt);
+        default: {
+            _diag.Report(Error, "compiler limitation: statement type is currently unimplemented")
+                .SetCode(ErrUnimplementedStmt)
+                .AddSpan(stmt->GetStartLoc(), stmt->GetEndLoc());
+        }
     }
     #undef NODE
 }
@@ -233,6 +238,12 @@ Semantic::analyzeExpr(Expr *expr) {
         NODE(NkLitExpr, analyzeLE, LiteralExpr);
         NODE(NkUnaryExpr, analyzeUE, UnaryExpr);
         NODE(NkVarExpr, analyzeVE, VarExpr);
+        default: {
+            _diag.Report(Error, "compiler limitation: expression type is currently unimplemented")
+                .SetCode(ErrUnimplementedExpr)
+                .AddSpan(expr->GetStartLoc(), expr->GetEndLoc());
+            return { Value::GetIncorrectValue(), nullptr };
+        }
     }
     #undef NODE
 }

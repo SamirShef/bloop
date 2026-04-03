@@ -17,6 +17,9 @@ enum NodeKind : uint8_t {
     NkVarExpr,
     NkBinaryExpr,
     NkUnaryExpr,
+    NkFieldExpr,
+    NkFuncCallExpr,
+    NkMethodCallExpr,
     NkEndExprs
 };
 

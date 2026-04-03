@@ -31,6 +31,8 @@ enum ErrorCode : uint8_t {
     ErrHasntRet,
     ErrModNotFound,
     ErrModNotLoaded,
+    ErrUnimplementedExpr,
+    ErrUnimplementedStmt,
 };
 
 enum WarnCode : uint8_t {
