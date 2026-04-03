@@ -8,6 +8,8 @@
 
 namespace bloop {
 
+class Module;
+
 struct Argument {
     NameObj Name;
     class Type *Type;
@@ -23,8 +25,14 @@ struct Function {
     AccessModifier          Access;
     uint                    RefsCount = 0;
     StorageKind             Storage;
+    Module *                Parent = nullptr;
+    int                     Index = -1;
 
-    explicit Function(NameObj n, Type *rt, std::vector<Argument> &ar, AccessModifier ac, StorageKind s = Static) : Name(n), RetType(rt), Args(ar), Access(ac), Storage(s) {}
+    explicit Function(NameObj n, Type *rt, std::vector<Argument> &ar, AccessModifier ac, Module *m = nullptr, StorageKind s = Static, int i = -1)
+        : Name(n), RetType(rt), Args(ar), Access(ac), Parent(m), Storage(s), Index(i) {}
+    
+    std::string
+    GetMangledName() const;
 };
 
 struct FuncOverload {

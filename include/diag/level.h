@@ -26,6 +26,7 @@ enum ErrorCode : uint8_t {
     ErrCannotApplyOp,
     ErrCannotGetDefault,
     ErrUndeclaredVar,
+    ErrUndeclaredFunc,
     ErrRedefinition,
     ErrCannotImplCast,
     ErrHasntRet,
@@ -33,6 +34,9 @@ enum ErrorCode : uint8_t {
     ErrModNotLoaded,
     ErrUnimplementedExpr,
     ErrUnimplementedStmt,
+    ErrNoMatchingFunction,
+    ErrAmbiguousCall,
+    ErrInvalidMainFuncSig,
 };
 
 enum WarnCode : uint8_t {

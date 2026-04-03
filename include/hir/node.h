@@ -17,6 +17,9 @@ enum HIRNodeKind : uint8_t {
     HIRNkVarExpr,
     HIRNkBinaryExpr,
     HIRNkUnaryExpr,
+    HIRNkFieldExpr,
+    HIRNkFuncCallExpr,
+    HIRNkMethodCallExpr,
     HIRNkEndExprs
 };
 

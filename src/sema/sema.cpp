@@ -132,7 +132,8 @@ Semantic::analyzeFDS(FuncDeclStmt *fds) {
         _mod->FuncOverloads.emplace(fds->GetName().Name, FuncOverload());
         candidates = &_mod->FuncOverloads.at(fds->GetName().Name);
     }
-    Function func(fds->GetName(), fds->GetRetType(), fds->GetArgs(), fds->GetAccess(), Static);
+
+    Function func(fds->GetName(), fds->GetRetType(), fds->GetArgs(), fds->GetAccess(), _mod, Static, candidates->Candidates.size());
     candidates->Candidates.push_back(func);
     std::vector<HIRFuncArgument> hirArgs;
     for (int i = 0; i < fds->GetArgs().size(); ++i) {
@@ -140,7 +141,7 @@ Semantic::analyzeFDS(FuncDeclStmt *fds) {
         hirArgs.push_back(HIRFuncArgument(a.Name.Name, a.Type, a.DefaultVal ? analyzeExpr(a.DefaultVal).HirNode : nullptr));
     }
     
-    auto *funcHir = _builder.CreateFunc(fds->GetName().Name, fds->GetRetType(), hirArgs);
+    auto *funcHir = _builder.CreateFunc(func.GetMangledName(), fds->GetRetType(), hirArgs, fds->GetName().Name == "main");
 
     _funcsRetTypes.push(fds->GetRetType());
     _vars.push({});
@@ -173,6 +174,32 @@ Semantic::analyzeFDS(FuncDeclStmt *fds) {
         _builder.CreateRet(new NothType(llvm::SMLoc(), llvm::SMLoc()), nullptr);
     }
     _builder.SetInsertionPoint(nullptr);
+
+
+    if (fds->GetName().Name == "main") {
+        bool correctRetType = !fds->GetRetType() || fds->GetRetType() && fds->GetRetType()->IsInteger() && fds->GetRetType()->AsInteger()->GetBitWidth() == 32;
+        bool correctTypesOfArgs = fds->GetArgs().size() == 0 || fds->GetArgs().size() == 2 && fds->GetArgs()[0].Type->IsInteger() &&
+                                  fds->GetArgs()[1].Type->IsPointer() &&
+                                  fds->GetArgs()[1].Type->AsPointer()->GetBaseType()->IsPointer() &&
+                                  fds->GetArgs()[1].Type->AsPointer()->GetBaseType()->AsPointer()->GetBaseType()->IsChar();
+
+        if (!correctRetType || !correctTypesOfArgs) {
+            if (!correctRetType) {
+                _diag.Report(Error, "invalid signature for function 'main'")
+                    .SetCode(ErrInvalidMainFuncSig)
+                    .AddSpan(fds->GetName().Start, fds->GetName().End)
+                    .AddHelp("try 'func main()' or 'func main(argc: i32, argv: **char): i32'")
+                    .AddSpan(fds->GetRetType()->GetStartLoc(), fds->GetRetType()->GetEndLoc(), "expected 'i32' or 'noth'");
+            }
+            if (!correctTypesOfArgs && fds->GetArgs().size() != 0) {
+                _diag.Report(Error, "invalid signature for function 'main'")
+                    .SetCode(ErrInvalidMainFuncSig)
+                    .AddSpan(fds->GetName().Start, fds->GetName().End)
+                    .AddHelp("try 'func main()' or 'func main(argc: i32, argv: **char): i32'")
+                    .AddSpan(fds->GetArgs().front().Name.Start, fds->GetArgs().back().Type->GetEndLoc(), "expected nothing or 'i32, **char'");
+            }
+        }
+    }
 }
 
 void
@@ -238,11 +265,12 @@ Semantic::analyzeExpr(Expr *expr) {
         NODE(NkLitExpr, analyzeLE, LiteralExpr);
         NODE(NkUnaryExpr, analyzeUE, UnaryExpr);
         NODE(NkVarExpr, analyzeVE, VarExpr);
+        NODE(NkFuncCallExpr, analyzeFCE, FuncCallExpr);
         default: {
             _diag.Report(Error, "compiler limitation: expression type is currently unimplemented")
                 .SetCode(ErrUnimplementedExpr)
                 .AddSpan(expr->GetStartLoc(), expr->GetEndLoc());
-            return { Value::GetIncorrectValue(), nullptr };
+            return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
         }
     }
     #undef NODE
@@ -400,8 +428,42 @@ Semantic::analyzeVE(VarExpr *ve) {
     }
     _diag.Report(Error, "variable is undeclared in this scope")
         .SetCode(ErrUndeclaredVar)
-        .AddSpan(ve->GetStartLoc(), ve->GetEndLoc());
+        .AddSpan(ve->GetStartLoc(), ve->GetEndLoc(), "undeclared");
     return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+}
+
+Semantic::SemanticResult
+Semantic::analyzeFCE(FuncCallExpr *fce) {
+    FuncOverload *candidates = findFuncCandidates(fce->GetName().Name);
+    if (!candidates) {
+        _diag.Report(Error, "function is undeclared in this scope")
+            .SetCode(ErrUndeclaredFunc)
+            .AddSpan(fce->GetStartLoc(), fce->GetEndLoc(), "undeclared");
+        return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+    }
+
+    std::vector<Type *> argTypes;
+    std::vector<SemanticResult> argResults;
+    
+    for (auto &a : fce->GetArgs()) {
+        auto argRes = analyzeExpr(a);
+        argResults.push_back(argRes);
+        argTypes.push_back(argRes.Val.Type);
+    }
+
+    Function *bestFunc = resolveBestOverload(candidates, argTypes, fce->GetStartLoc(), fce->GetEndLoc());
+    if (!bestFunc) {
+        return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+    }
+
+    std::vector<HIRNode *> hirArgs;
+    for (int i = 0; i < argResults.size(); ++i) {
+        auto res = implicitlyCast(argResults[i], &bestFunc->Args[i].Type);
+        hirArgs.push_back(res.HirNode);
+    }
+
+    return { Value(Value::Unknown, ValueData(), bestFunc->RetType, fce->GetStartLoc(), fce->GetEndLoc()),
+             _builder.CreateCall(bestFunc->Index, hirArgs) };
 }
 
 void
@@ -628,6 +690,96 @@ Semantic::implicitlyCast(SemanticResult res, Type **expectedType) {
         .AddSpan(res.Val.Start, res.Val.End);
 
     return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+}
+
+Semantic::CastCost
+Semantic::checkCastCost(Type *src, Type *dst) {
+    if (src == dst) {
+        return Exact;
+    }
+
+    if (src->IsInteger() && dst->IsInteger()) {
+        auto *srcI = src->AsInteger();
+        auto *dstI = dst->AsInteger();
+
+        if (dstI->GetBitWidth() >= srcI->GetBitWidth()) {
+            if (srcI->IsUnsigned() == dstI->IsUnsigned() || dstI->GetBitWidth() > srcI->GetBitWidth()) {
+                return SafeImplicit;
+            }
+        }
+    }
+
+    if (src->IsInteger() && dst->IsFloating()) {
+        return SafeImplicit;
+    }
+
+    if (src->IsFloating() && dst->IsFloating()) {
+        auto *srcF = src->AsFloating();
+        auto *dstF = dst->AsFloating();
+
+        if (dstF->IsDouble() && srcF->IsFloat()) {
+            return SafeImplicit;
+        }
+    }
+
+    return Incompatible;
+}
+
+Function *
+Semantic::resolveBestOverload(FuncOverload *candidates, const std::vector<Type *> &argTypes, llvm::SMLoc start, llvm::SMLoc end) {
+    std::vector<std::pair<Function *, int>> viableCandidates;
+
+    for (auto &cand : candidates->Candidates) {
+        if (cand.Args.size() != argTypes.size()) {
+            continue; 
+        }
+
+        bool viable = true;
+        int costSum = 0;
+        for (int i = 0; i < argTypes.size(); ++i) {
+            CastCost cost = checkCastCost(argTypes[i], cand.Args[i].Type);
+            if (cost == Incompatible) {
+                viable = false;
+                break;
+            }
+            costSum += cost;
+        }
+
+        if (viable) {
+            viableCandidates.push_back({ &cand, costSum });
+        }
+    }
+
+    if (viableCandidates.empty()) {
+        _diag.Report(Error, "no matching function for call")
+            .SetCode(ErrNoMatchingFunction)
+            .AddSpan(start, end);
+        return nullptr;
+    }
+
+    Function *bestCand = viableCandidates[0].first;
+    int minCost = viableCandidates[0].second;
+    bool ambiguous = false;
+
+    for (int i = 1; i < viableCandidates.size(); ++i) {
+        if (viableCandidates[i].second < minCost) {
+            minCost = viableCandidates[i].second;
+            bestCand = viableCandidates[i].first;
+            ambiguous = false;
+        }
+        else if (viableCandidates[i].second == minCost) {
+            ambiguous = true;
+        }
+    }
+
+    if (ambiguous) {
+        _diag.Report(Error, "call is ambiguous")
+            .SetCode(ErrAmbiguousCall)
+            .AddSpan(start, end);
+        return nullptr;
+    }
+
+    return bestCand;
 }
 
 HIRBinaryKind

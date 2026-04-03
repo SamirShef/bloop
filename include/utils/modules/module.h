@@ -12,6 +12,7 @@ namespace bloop {
 
 struct Module {
     std::string         Name;
+    Module             *Parent;
     AccessModifier      Access;
     HASH(Variable,      Vars);
     HASH(FuncOverload,  FuncOverloads);
@@ -20,7 +21,15 @@ struct Module {
     HASH(Module *,      Submods);
     HASH(Module *,      Imports);
 
-    explicit Module(std::string n, AccessModifier a) : Name(n), Access(a) {}
+    explicit Module(std::string n, AccessModifier a, Module *p = nullptr) : Name(n), Access(a), Parent(p) {}
+
+    std::string
+    ToString() const {
+        if (!Parent) {
+            return Name;
+        }
+        return Parent->ToString() + "." + Name;
+    }
 };
 
 #undef HASH

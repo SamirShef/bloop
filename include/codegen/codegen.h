@@ -16,7 +16,9 @@ class CodeGen {
         llvm::Function *Func;
         std::vector<llvm::AllocaInst *> Locals;
     };
-    std::unordered_map<std::string, Function> _funcs;
+    std::unordered_map<std::string, Function> _funcsMap;
+    std::vector<llvm::Function *> _funcs;
+    llvm::Function *_userMainFunc = nullptr;
 
 public:
     explicit CodeGen(std::string name, std::vector<HIRNode *> &n) : _nodes(n), _context(), _builder(_context), _module(new llvm::Module(name, _context)) {}
@@ -25,6 +27,9 @@ public:
     Generate() {
         for (auto &n : _nodes) {
             generateNode(n);
+        }
+        if (_userMainFunc) {
+            generateImplicitMain();
         }
         return _module;
     }
@@ -41,6 +46,9 @@ private:
     
     void
     generateRS(HIRRetStmt *rs);
+
+    void
+    generateImplicitMain();
 
     llvm::Value *
     generateExpr(HIRNode *expr);
@@ -59,6 +67,9 @@ private:
     
     llvm::Value *
     generateCast(HIRCastNode *cast);
+
+    llvm::Value *
+    generateFCE(HIRFuncCallExpr *fce);
     
     llvm::Type *
     getType(Type *type);

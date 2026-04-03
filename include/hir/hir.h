@@ -6,3 +6,4 @@
 #include <hir/vds.h>
 #include <hir/ve.h>
 #include <hir/rs.h>
+#include <hir/fce.h>

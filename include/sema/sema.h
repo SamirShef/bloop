@@ -24,6 +24,12 @@ class Semantic {
         HIRNode *HirNode;
     };
 
+    enum CastCost {
+        Exact = 0,
+        SafeImplicit = 1,
+        Incompatible = 1000
+    };
+
     struct Scope {
         std::unordered_map<std::string, int> VarsMap;
         std::vector<Variable> Vars;
@@ -78,6 +84,9 @@ private:
 
     SemanticResult
     analyzeVE(VarExpr *ve);
+
+    SemanticResult
+    analyzeFCE(FuncCallExpr *fce);
 
     Variable *
     findGlobVar(std::string name) {
@@ -153,6 +162,12 @@ private:
 
     SemanticResult
     implicitlyCast(SemanticResult res, Type **expectedType);
+
+    CastCost
+    checkCastCost(Type *src, Type *dst);
+
+    Function *
+    resolveBestOverload(FuncOverload *candidates, const std::vector<Type *> &argTypes, llvm::SMLoc start, llvm::SMLoc end);
 
     HIRBinaryKind
     tokenKindToHIRBk(TokenKind kind);
