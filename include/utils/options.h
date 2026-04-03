@@ -8,6 +8,7 @@ namespace bloop {
     static llvm::cl::SubCommand InitSub("init", "Initialize a project in current directory");
     static llvm::cl::SubCommand BuildSub("build", "Build the current project");
     static llvm::cl::SubCommand RunSub("run", "Build the current project and run it");
+    static llvm::cl::SubCommand ClearSub("clear", "Clear build artefacts");
     static llvm::cl::SubCommand FetchSub("fetch", "Update the module registry");
 
     static llvm::cl::opt<std::string> NewName(
