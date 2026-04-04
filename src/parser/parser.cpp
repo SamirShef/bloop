@@ -103,6 +103,9 @@ Parser::parseFDS() {
     if (expect(TkColon)) {
         retType = consumeType();
     }
+    else {
+        retType = new NothType(peek().Start, peek().Start);
+    }
 
     if (!expect(TkLBrace)) {
         _diag.Report(Error, "expected '{'")

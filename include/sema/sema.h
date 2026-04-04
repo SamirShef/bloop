@@ -45,6 +45,12 @@ public:
     void
     Analyze(std::vector<Stmt *> &ast) {
         for (auto &s : ast) {
+            if (s->GetKind() == NkFuncDeclStmt) {
+                registerFunc(static_cast<FuncDeclStmt *>(s));
+            }
+        }
+
+        for (auto &s : ast) {
             analyzeStmt(s);
         }
     }
@@ -63,6 +69,15 @@ private:
     
     void
     analyzeFDS(FuncDeclStmt *fds);
+    
+    void
+    registerFunc(FuncDeclStmt *fds);
+    
+    void
+    resolveFuncSignature(Function *func);
+
+    void
+    analyzeFuncBody(FuncDeclStmt *fds);
 
     void
     analyzeUS(UsingStmt *us);

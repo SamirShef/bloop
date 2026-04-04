@@ -13,9 +13,14 @@ public:
 
     CLASSOF(Array)
 
-    Type *&
-    GetBaseType() {
+    Type *
+    GetBaseType() const {
         return _base;
+    }
+
+    void
+    SetBaseType(Type *b) {
+        _base = b;
     }
 
     Expr *GetSize() const {

@@ -11,9 +11,14 @@ public:
 
     CLASSOF(Pointer)
 
-    Type *&
-    GetBaseType() {
+    Type *
+    GetBaseType() const {
         return _base;
+    }
+
+    void
+    SetBaseType(Type *b) {
+        _base = b;
     }
 
     std::string

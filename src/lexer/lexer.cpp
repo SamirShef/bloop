@@ -153,7 +153,14 @@ Lexer::tokenizeNumLit(const char *tokStart) {
     if (hasDot && i <= 3) {
         i = 5; // f64
     }
-    TokenKind lit = !hasDot ? (TokenKind)(TkI32Lit + i) : (TokenKind)(TkF32Lit + i - 4);
+    TokenKind lit;
+    if (i == 4) {
+        lit = TkF32Lit;
+        isUnsigned = false;
+    }
+    else {
+        lit = !hasDot ? (TokenKind)(TkI32Lit + i) : (TokenKind)(TkF32Lit + i - 4);
+    }
     return TOK((TokenKind)(lit + isUnsigned * 5), val, LOC1(tokStart), LOC1(_curPtr));
 }
 
