@@ -770,6 +770,9 @@ Semantic::implicitlyCast(SemanticResult res, Type **expectedType) {
             res.HirNode = _builder.CreateCast(FPExtend, res.HirNode, src, dst); 
             return res;
         }
+        else if (dstF->IsFloat() == srcF->IsFloat() || dstF->IsDouble() == srcF->IsDouble()) {
+            return res;
+        }
     }
 
     _diag.Report(Error, "cannot implicitly cast '" + src->ToString() + "' to '" + dst->ToString() + "'")
@@ -785,11 +788,15 @@ Semantic::checkCastCost(Type *src, Type *dst) {
         return Exact;
     }
 
+
     if (src->IsInteger() && dst->IsInteger()) {
         auto *srcI = src->AsInteger();
         auto *dstI = dst->AsInteger();
 
         if (dstI->GetBitWidth() >= srcI->GetBitWidth()) {
+            if (srcI->IsUnsigned() == dstI->IsUnsigned() && dstI->GetBitWidth() == srcI->GetBitWidth()) {
+                return Exact;
+            }
             if (srcI->IsUnsigned() == dstI->IsUnsigned() || dstI->GetBitWidth() > srcI->GetBitWidth()) {
                 return SafeImplicit;
             }
@@ -806,6 +813,9 @@ Semantic::checkCastCost(Type *src, Type *dst) {
 
         if (dstF->IsDouble() && srcF->IsFloat()) {
             return SafeImplicit;
+        }
+        else if (dstF->IsFloat() == srcF->IsFloat() || dstF->IsDouble() == srcF->IsDouble()) {
+            return Exact;
         }
     }
 
