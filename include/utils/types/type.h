@@ -51,7 +51,8 @@ public:
     explicit Type(Type::Kind k, llvm::SMLoc s, llvm::SMLoc e) : _kind(k), _start(s), _end(e) {}
 
     #define IS(n, k) constexpr bool n() const { return Is(k); }
-    #define AS(n, t) t *n();
+    #define AS(n, t) t *n(); \
+                     const t *n() const;
     
     Kind
     GetKind() const {
@@ -123,5 +124,8 @@ public:
     virtual std::string
     ToString() = 0;
 };
+
+bool
+operator==(const Type &lhs, const Type &rhs);
 
 }

@@ -13,9 +13,14 @@ public:
 
     CLASSOF(Tuple)
 
-    std::vector<Type *> &
-    GetTypes() {
+    std::vector<Type *>
+    GetTypes() const {
         return _types;
+    }
+
+    void
+    SetTypes(std::vector<Type *> t) {
+        _types = t;
     }
     
     int

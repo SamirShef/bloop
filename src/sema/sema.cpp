@@ -191,13 +191,45 @@ void
 Semantic::registerFunc(FuncDeclStmt *fds) {
     std::string name = fds->GetName().Name;
     FuncOverload *candidates = findFuncCandidates(name);
-    if (!candidates) {
+    if (candidates) {
+        for (auto &f : candidates->Candidates) {
+            int coincidences = 0;
+            if (f.Args.size() == fds->GetArgs().size()) {
+                for (int i = 0; i < f.Args.size(); ++i) {
+                    resolveType(&f.Args[i].Type);
+                    resolveType(&fds->GetArgs()[i].Type);
+                    if (*f.Args[i].Type == *fds->GetArgs()[i].Type) {
+                        ++coincidences;
+                    }
+                }
+            }
+            else {
+                continue;
+            }
+            if (coincidences == fds->GetArgs().size()) {
+                std::stringstream ss;
+                ss << '(';
+                for (int i = 0; i < fds->GetArgs().size(); ++i) {
+                    ss << fds->GetArgs()[i].Type->ToString();
+                    if (i < fds->GetArgs().size() - 1) {
+                        ss << ", ";
+                    }
+                }
+                ss << ')';
+                _diag.Report(Error, "redefinition of '" + fds->GetName().Name + ss.str() + "'")
+                    .SetCode(ErrRedefinition)
+                    .AddSpan(f.Name.Start, f.Name.End, "previous definition is here")
+                    .AddSpan(fds->GetName().Start, fds->GetName().End, "redefinition here");
+                return;
+            }
+        }
+    }
+    else {
         _mod->FuncOverloads.emplace(name, FuncOverload());
         candidates = &_mod->FuncOverloads.at(name);
     }
 
-    std::vector<Argument> args;
-    Function func(fds->GetName(), nullptr, args, fds->GetAccess(), Static, _mod);
+    Function func(fds->GetName(), nullptr, fds->GetArgs(), fds->GetAccess(), Static, _mod);
     func.ASTNode = fds;
     func.Status = NotAnalyzed;
     candidates->Candidates.push_back(func);
@@ -215,9 +247,10 @@ Semantic::resolveFuncSignature(Function *func) {
     resolveType(&fds->GetRetType());
     func->RetType = fds->GetRetType();
 
-    for (auto &a : fds->GetArgs()) {
+    for (int i = 0; i < fds->GetArgs().size(); ++i) {
+        auto &a = fds->GetArgs()[i];
         resolveType(&a.Type);
-        func->Args.push_back(Argument(a.Name, a.Type, a.DefaultVal));
+        resolveType(&func->Args[i].Type);
     }
 
     std::vector<HIRFuncArgument> hirArgs;
@@ -691,19 +724,21 @@ Semantic::resolveType(Type **t) {
     switch ((*t)->GetKind()) {
         case Type::Tuple: {
             TupleType *tuple = (*t)->AsTuple();
+            std::vector<Type *> newTypes;
             for (auto &t : tuple->GetTypes()) {
-                resolveType(&t);
+                newTypes.push_back(resolveType(&t));
             }
+            tuple->SetTypes(newTypes);
             return *t;
         }
         case Type::Pointer: {
-            Type **base = &(*t)->AsPointer()->GetBaseType();
-            resolveType(base);
+            Type *base = (*t)->AsPointer()->GetBaseType();
+            (*t)->AsPointer()->SetBaseType(resolveType(&base));
             return *t;
         }
         case Type::Array: {
-            Type **base = &(*t)->AsArray()->GetBaseType();
-            resolveType(base);
+            Type *base = (*t)->AsArray()->GetBaseType();
+            (*t)->AsArray()->SetBaseType(resolveType(&base));
             return *t;
         }
     }
@@ -855,7 +890,7 @@ Semantic::implicitlyCast(SemanticResult res, Type **expectedType) {
     Type *src = res.Val.Type;
     Type *dst = *expectedType;
 
-    if (src == dst) {
+    if (*src == *dst) {
         return res;
     }
 
