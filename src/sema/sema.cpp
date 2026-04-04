@@ -13,7 +13,7 @@ Semantic::analyzeStmt(Stmt *stmt) {
     #define NODE(k, f, t) case k: return f(static_cast<t *>(stmt));
     switch (stmt->GetKind()) {
         NODE(NkVarDeclStmt, analyzeVDS, VarDeclStmt);
-        NODE(NkFuncDeclStmt, analyzeFDS, FuncDeclStmt);
+        NODE(NkFuncDeclStmt, analyzeFuncBody, FuncDeclStmt);
         NODE(NkUsingStmt, analyzeUS, UsingStmt);
         NODE(NkRetStmt, analyzeRS, RetStmt);
         default: {
@@ -188,6 +188,131 @@ Semantic::analyzeFDS(FuncDeclStmt *fds) {
 }
 
 void
+Semantic::registerFunc(FuncDeclStmt *fds) {
+    std::string name = fds->GetName().Name;
+    FuncOverload *candidates = findFuncCandidates(name);
+    if (!candidates) {
+        _mod->FuncOverloads.emplace(name, FuncOverload());
+        candidates = &_mod->FuncOverloads.at(name);
+    }
+
+    std::vector<Argument> args;
+    Function func(fds->GetName(), nullptr, args, fds->GetAccess(), Static, _mod);
+    func.ASTNode = fds;
+    func.Status = NotAnalyzed;
+    candidates->Candidates.push_back(func);
+}
+
+void
+Semantic::resolveFuncSignature(Function *func) {
+    if (func->Status == AnalysisStatus::SignatureReady || func->Status == AnalysisStatus::BodyAnalyzed) {
+        return;
+    }
+    
+    func->Status = ResolvingSig;
+    FuncDeclStmt *fds = func->ASTNode;
+
+    resolveType(&fds->GetRetType());
+    func->RetType = fds->GetRetType();
+
+    for (auto &a : fds->GetArgs()) {
+        resolveType(&a.Type);
+        func->Args.push_back(Argument(a.Name, a.Type, a.DefaultVal));
+    }
+
+    std::vector<HIRFuncArgument> hirArgs;
+    for (auto &a : func->Args) {
+        hirArgs.push_back(HIRFuncArgument(a.Name.Name, a.Type, nullptr));
+    }
+    
+    auto curFuncOld = _builder.GetContext().GetCurFunc();
+    _builder.SetInsertionPoint(nullptr);
+    func->HirNode = static_cast<HIRFuncDeclStmt *>(_builder.CreateFunc(func->GetMangledName(), func->RetType, hirArgs, fds->GetName().Name == "main"));
+    _builder.SetInsertionPoint(curFuncOld);
+    func->Status = SignatureReady;
+}
+
+void
+Semantic::analyzeFuncBody(FuncDeclStmt *fds) {
+    FuncOverload *candidates = findFuncCandidates(fds->GetName().Name);
+    Function *func = nullptr;
+    
+    for (auto &c : candidates->Candidates) {
+        if (c.ASTNode == fds) {
+            func = &c;
+            break;
+        }
+    }
+    
+    if (!func || func->Status == BodyAnalyzed) {
+        return;
+    }
+
+    resolveFuncSignature(func);
+
+    _funcsRetTypes.push(func->RetType);
+    _vars.push({});
+
+    for (int i = 0; i < func->Args.size(); ++i) {
+        auto &a = func->Args[i];
+        createVar(a.Name.Name, Variable(a.Name, a.Type, false, Priv, Value::GetIncorrectValue(), Parameter, i));
+    }
+
+    _builder.SetInsertionPoint(func->HirNode);
+
+    bool hasRet = false;
+    for (auto &s : fds->GetBody()) {
+        if (s->GetKind() == NkRetStmt) {
+            hasRet = true;
+        }
+        analyzeStmt(s);
+    }
+
+    _vars.pop();
+    func->RetType = fds->GetRetType();
+    func->HirNode->GetRetType() = fds->GetRetType();
+
+    if (!hasRet && fds->GetRetType() && !fds->GetRetType()->IsNothType()) {
+        _diag.Report(Error, "function must return a value in all execution paths")
+            .SetCode(ErrHasntRet)
+            .AddSpan(fds->GetName().Start, fds->GetName().End);
+    }
+    else if (!hasRet && (!fds->GetRetType() || fds->GetRetType() && fds->GetRetType()->IsNothType())) {
+        _builder.SetInsertionPoint(func->HirNode);
+        _builder.CreateRet(new NothType(llvm::SMLoc(), llvm::SMLoc()), nullptr);
+    }
+
+    if (fds->GetName().Name == "main") {
+        bool correctRetType = !fds->GetRetType() || fds->GetRetType() && fds->GetRetType()->IsInteger() && fds->GetRetType()->AsInteger()->GetBitWidth() == 32;
+        bool correctTypesOfArgs = fds->GetArgs().size() == 0 || fds->GetArgs().size() == 2 && fds->GetArgs()[0].Type->IsInteger() &&
+                                  fds->GetArgs()[1].Type->IsPointer() &&
+                                  fds->GetArgs()[1].Type->AsPointer()->GetBaseType()->IsPointer() &&
+                                  fds->GetArgs()[1].Type->AsPointer()->GetBaseType()->AsPointer()->GetBaseType()->IsChar();
+
+        if (!correctRetType || !correctTypesOfArgs) {
+            if (!correctRetType) {
+                _diag.Report(Error, "invalid signature for function 'main'")
+                    .SetCode(ErrInvalidMainFuncSig)
+                    .AddSpan(fds->GetName().Start, fds->GetName().End)
+                    .AddHelp("try 'func main()' or 'func main(argc: i32, argv: **char): i32'")
+                    .AddSpan(fds->GetRetType()->GetStartLoc(), fds->GetRetType()->GetEndLoc(), "expected 'i32' or 'noth'");
+            }
+            if (!correctTypesOfArgs && fds->GetArgs().size() != 0) {
+                _diag.Report(Error, "invalid signature for function 'main'")
+                    .SetCode(ErrInvalidMainFuncSig)
+                    .AddSpan(fds->GetName().Start, fds->GetName().End)
+                    .AddHelp("try 'func main()' or 'func main(argc: i32, argv: **char): i32'")
+                    .AddSpan(fds->GetArgs().front().Name.Start, fds->GetArgs().back().Type->GetEndLoc(), "expected nothing or 'i32, **char'");
+            }
+        }
+    }
+    
+    _builder.SetInsertionPoint(nullptr);
+    func->Status = BodyAnalyzed;
+    _funcsRetTypes.pop();
+}
+
+void
 Semantic::analyzeUS(UsingStmt *us) {
     std::string modName = us->GetPath().Name;
     
@@ -235,17 +360,11 @@ Semantic::analyzeRS(RetStmt *rs) {
     if (rs->GetExpr()) {
         auto valRes = analyzeExpr(rs->GetExpr());
         Value val = valRes.Val;
-        if (!_funcsRetTypes.top()) {
-            _funcsRetTypes.top() = val.Type;
-        }
-        else {
-            valRes = implicitlyCast(valRes, &_funcsRetTypes.top());
-        }
+        valRes = implicitlyCast(valRes, &_funcsRetTypes.top());
         _builder.CreateRet(_funcsRetTypes.top(), valRes.HirNode);
     }
     else {
-        if (!_funcsRetTypes.top()) {
-            _funcsRetTypes.top() = new NothType(llvm::SMLoc(), llvm::SMLoc());
+        if (_funcsRetTypes.top()->IsNothType()) {
             _builder.CreateRet(_funcsRetTypes.top(), nullptr);
         }
         else {
@@ -284,6 +403,8 @@ Semantic::analyzeBE(BinaryExpr *be) {
     auto rhsRes = analyzeExpr(be->GetRHS());
     Value lhs = lhsRes.Val;
     Value rhs = rhsRes.Val;
+    resolveType(&lhs.Type);
+    resolveType(&rhs.Type);
     Type *commonType = getCommonTypeForOp(lhs.Type, rhs.Type, be->GetOp(), be->GetStartLoc(), be->GetEndLoc());
     lhsRes = implicitlyCast(lhsRes, &commonType);
     rhsRes = implicitlyCast(rhsRes, &commonType);
@@ -350,6 +471,7 @@ Semantic::SemanticResult
 Semantic::analyzeUE(UnaryExpr *ue) {
     auto rhsRes = analyzeExpr(ue->GetRHS());
     Value rhs = rhsRes.Val;
+    resolveType(&rhs.Type);
 
     bool ok = true;
     switch (ue->GetOp().Kind) {
@@ -450,6 +572,10 @@ Semantic::analyzeFCE(FuncCallExpr *fce) {
             .SetCode(ErrUndeclaredFunc)
             .AddSpan(fce->GetStartLoc(), fce->GetEndLoc(), "undeclared");
         return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+    }
+
+    for (auto &cand : candidates->Candidates) {
+        resolveFuncSignature(&cand);
     }
 
     std::vector<Type *> argTypes;

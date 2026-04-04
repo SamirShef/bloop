@@ -10,6 +10,13 @@ namespace bloop {
 
 class Module;
 
+enum AnalysisStatus {
+    NotAnalyzed,
+    ResolvingSig,
+    SignatureReady,
+    BodyAnalyzed
+};
+
 struct Argument {
     NameObj     Name;
     class Type *Type;
@@ -23,9 +30,13 @@ struct Function {
     Type                   *RetType;
     std::vector<Argument>   Args;
     AccessModifier          Access;
-    uint                    RefsCount = 0;
+    uint                    RefsCount   = 0;
     StorageKind             Storage;
-    Module *                Parent = nullptr;
+    Module                 *Parent      = nullptr;
+
+    class FuncDeclStmt     *ASTNode     = nullptr; 
+    AnalysisStatus          Status      = NotAnalyzed;
+    class HIRFuncDeclStmt  *HirNode     = nullptr;
 
     explicit Function(NameObj n, Type *rt, std::vector<Argument> &ar, AccessModifier ac, StorageKind s = Static, Module *m = nullptr)
         : Name(n), RetType(rt), Args(ar), Access(ac), Storage(s), Parent(m) {}

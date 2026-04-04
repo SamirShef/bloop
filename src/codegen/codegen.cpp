@@ -42,19 +42,30 @@ CodeGen::generateVDS(HIRVarDeclStmt *vds) {
 }
 
 void
-CodeGen::generateFDS(HIRFuncDeclStmt *fds) {
+CodeGen::declareFDS(HIRFuncDeclStmt *fds) {
+    if (_funcsMap.count(fds->GetName())) {
+        return;
+    }
+
     std::vector<llvm::Type *> args(fds->GetArgs().size());
     for (int i = 0; i < fds->GetArgs().size(); ++i) {
         args[i] = getType(fds->GetArgs()[i].Type);
     }
+    
     llvm::FunctionType *funcType = llvm::FunctionType::get(getType(fds->GetRetType()), args, false);
     llvm::Function *func = llvm::Function::Create(funcType, llvm::GlobalValue::ExternalLinkage, fds->GetName(), *_module);
+    
     _funcsMap.emplace(fds->GetName(), Function { func });
     _funcs.push_back(func);
 
     if (fds->IsMain()) {
         _userMainFunc = func;
     }
+}
+
+void
+CodeGen::generateFDS(HIRFuncDeclStmt *fds) {
+    llvm::Function *func = _funcsMap.at(fds->GetName()).Func;
     
     int i = 0;
     for (auto &a : func->args()) {

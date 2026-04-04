@@ -26,11 +26,19 @@ public:
     llvm::Module *
     Generate() {
         for (auto &n : _nodes) {
+            if (n->GetKind() == HIRNkFuncDeclStmt) {
+                declareFDS(static_cast<HIRFuncDeclStmt *>(n));
+            }
+        }
+        
+        for (auto &n : _nodes) {
             generateNode(n);
         }
+
         if (_userMainFunc) {
             generateImplicitMain();
         }
+
         return _module;
     }
 
@@ -40,6 +48,9 @@ private:
 
     void
     generateVDS(HIRVarDeclStmt *vds);
+
+    void
+    declareFDS(HIRFuncDeclStmt *fds);
 
     void
     generateFDS(HIRFuncDeclStmt *fds);
