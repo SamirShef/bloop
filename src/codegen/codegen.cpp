@@ -14,6 +14,7 @@ CodeGen::generateNode(HIRNode *node) {
         NODE(HIRNkVarDeclStmt, generateVDS, HIRVarDeclStmt);
         NODE(HIRNkFuncDeclStmt, generateFDS, HIRFuncDeclStmt);
         NODE(HIRNkRetStmt, generateRS, HIRRetStmt);
+        NODE(HIRNkBasicBlock, generateBB, HIRBasicBlock);
     }
     #undef NODE
 }
@@ -77,10 +78,8 @@ CodeGen::generateFDS(HIRFuncDeclStmt *fds) {
         return;
     }
 
-    llvm::BasicBlock *entry = llvm::BasicBlock::Create(_context, "entry", func);
-    _builder.SetInsertPoint(entry);
-    for (auto &s : fds->GetBody()) {
-        generateNode(s);
+    for (auto &bb : fds->GetBody()) {
+        generateBB(bb);
     }
 }
 
@@ -91,6 +90,15 @@ CodeGen::generateRS(HIRRetStmt *rs) {
     }
     else {
         _builder.CreateRetVoid();
+    }
+}
+
+void
+CodeGen::generateBB(HIRBasicBlock *bb) {
+    llvm::BasicBlock *block = llvm::BasicBlock::Create(_context, bb->GetName(), _module->getFunction(bb->GetParent()->GetName()));
+    _builder.SetInsertPoint(block);
+    for (auto &s : bb->GetInstructions()) {
+        generateNode(s);
     }
 }
 

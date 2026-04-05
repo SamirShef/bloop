@@ -42,12 +42,12 @@ Compile(const std::unordered_map<std::string, FileNode> &graph, const std::files
         return { false, "" };
     }
     
-    Semantic sema(diag, mod, graph);
+    HIRContext ctx;
+    Semantic sema(diag, mod, ctx, graph);
     sema.Analyze(ast);
     if (diag.GetErrorsCount() > 0) {
         return { false, "" };
     }
-    HIRContext context = sema.GetContext();
 
     Serializer serializer;
     std::filesystem::path bitcodeFile = objPath;
@@ -60,7 +60,7 @@ Compile(const std::unordered_map<std::string, FileNode> &graph, const std::files
         printer.Print(ast, Blue);
     }
 
-    CodeGen codegen(mod->Name, context.GetNodes());
+    CodeGen codegen(mod->Name, ctx.GetGlobals(), ctx.GetFunctions());
     llvm::Module *llvmMod = codegen.Generate();
 
     InitializeLLVMTargets();

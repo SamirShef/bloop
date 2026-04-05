@@ -1,6 +1,7 @@
 #pragma once
 #include <utils/symbols/function.h>
 #include <hir/node.h>
+#include <hir/bb.h>
 
 namespace bloop {
 
@@ -16,7 +17,7 @@ class HIRFuncDeclStmt : public HIRNode {
     std::string _name;
     Type *_retType;
     std::vector<HIRFuncArgument> _args;
-    std::vector<HIRNode *> _body;
+    std::vector<HIRBasicBlock *> _body;
     bool _isMain;
     bool _isDeclaration;
 
@@ -44,7 +45,7 @@ public:
         return _args;
     }
 
-    std::vector<HIRNode *> &
+    std::vector<HIRBasicBlock *> &
     GetBody() {
         return _body;
     }

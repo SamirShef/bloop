@@ -1,4 +1,5 @@
 #pragma once
+#include <llvm/Support/Allocator.h>
 #include <utils/symbols/function.h>
 #include <parser/precedence.h>
 #include <utils/types/type.h>
@@ -11,6 +12,7 @@
 namespace bloop {
 
 class Parser {
+    llvm::BumpPtrAllocator _allocator;
     DiagnosticEngine &_diag;
     std::vector<Token> &_tokens;
     uint _pos = 0;
@@ -26,6 +28,13 @@ public:
     }
 
 private:
+    template<typename T, typename... Args>
+    T *
+    createNode(Args &&... args) {
+        void *ptr = _allocator.Allocate<T>();
+        return new (ptr) T(std::forward<Args>(args)...);
+    }
+
     Stmt *
     parseStmt(bool consumeSemi = true);
 

@@ -6,7 +6,8 @@
 namespace bloop {
 
 class CodeGen {
-    std::vector<HIRNode *> &_nodes;
+    std::vector<HIRFuncDeclStmt *> &_hirFunctions;
+    std::vector<HIRVarDeclStmt *> &_hirGlobals;
     llvm::LLVMContext _context;
     llvm::Module *_module;
     llvm::IRBuilder<> _builder;
@@ -21,18 +22,21 @@ class CodeGen {
     llvm::Function *_userMainFunc = nullptr;
 
 public:
-    explicit CodeGen(std::string name, std::vector<HIRNode *> &n) : _nodes(n), _context(), _builder(_context), _module(new llvm::Module(name, _context)) {}
+    explicit CodeGen(std::string name, std::vector<HIRVarDeclStmt *> &g, std::vector<HIRFuncDeclStmt *> &f)
+        : _hirGlobals(g), _hirFunctions(f), _context(), _builder(_context), _module(new llvm::Module(name, _context)) {}
 
     llvm::Module *
     Generate() {
-        for (auto &n : _nodes) {
-            if (n->GetKind() == HIRNkFuncDeclStmt) {
-                declareFDS(static_cast<HIRFuncDeclStmt *>(n));
-            }
+        for (auto &f : _hirFunctions) {
+            declareFDS(f);
+        }
+
+        for (auto &g : _hirGlobals) {
+            generateVDS(g);
         }
         
-        for (auto &n : _nodes) {
-            generateNode(n);
+        for (auto &f : _hirFunctions) {
+            generateNode(f);
         }
 
         if (_userMainFunc) {
@@ -57,6 +61,9 @@ private:
     
     void
     generateRS(HIRRetStmt *rs);
+
+    void
+    generateBB(HIRBasicBlock *bb);
 
     void
     generateImplicitMain();
