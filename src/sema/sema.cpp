@@ -320,19 +320,14 @@ Semantic::analyzeFuncBody(FuncDeclStmt *fds) {
                                   fds->GetArgs()[1].Type->AsPointer()->GetBaseType()->AsPointer()->GetBaseType()->IsChar();
 
         if (!correctRetType || !correctTypesOfArgs) {
+            auto err = _diag.Report(Error, "invalid signature for function 'main'");
+            err.SetCode(ErrInvalidMainFuncSig)
+                .AddHelp("try 'func main()' or 'func main(argc: i32, argv: **char): i32'");
             if (!correctRetType) {
-                _diag.Report(Error, "invalid signature for function 'main'")
-                    .SetCode(ErrInvalidMainFuncSig)
-                    .AddSpan(fds->GetName().Start, fds->GetName().End)
-                    .AddHelp("try 'func main()' or 'func main(argc: i32, argv: **char): i32'")
-                    .AddSpan(fds->GetRetType()->GetStartLoc(), fds->GetRetType()->GetEndLoc(), "expected 'i32' or 'noth'");
+                err.AddSpan(fds->GetRetType()->GetStartLoc(), fds->GetRetType()->GetEndLoc(), "expected 'i32' or 'noth'");
             }
             if (!correctTypesOfArgs && fds->GetArgs().size() != 0) {
-                _diag.Report(Error, "invalid signature for function 'main'")
-                    .SetCode(ErrInvalidMainFuncSig)
-                    .AddSpan(fds->GetName().Start, fds->GetName().End)
-                    .AddHelp("try 'func main()' or 'func main(argc: i32, argv: **char): i32'")
-                    .AddSpan(fds->GetArgs().front().Name.Start, fds->GetArgs().back().Type->GetEndLoc(), "expected nothing or 'i32, **char'");
+                err.AddSpan(fds->GetArgs().front().Name.Start, fds->GetArgs().back().Type->GetEndLoc(), "expected nothing or 'i32, **char'");
             }
         }
     }

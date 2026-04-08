@@ -4,6 +4,7 @@
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/Format.h>
 #include <algorithm>
+#include <map>
 #include <sstream>
 
 namespace bloop {
@@ -58,63 +59,117 @@ DiagnosticEngine::Emit(const Diagnostic &diag) {
     os << diag.Message << '\n';
     os.resetColor();
 
+    std::map<unsigned, std::vector<const DiagnosticSpan *>> lineGroups;
     for (const auto &span : diag.Spans) {
         unsigned bufId = _srcMgr.FindBufferContainingLoc(span.Start);
-        auto lineCol = _srcMgr.getLineAndColumn(span.Start, bufId);
+        unsigned lineNo = _srcMgr.getLineAndColumn(span.Start, bufId).first;
+        lineGroups[lineNo].push_back(&span);
+    }
+
+    for (auto &group : lineGroups) {
+        unsigned lineNo = group.first;
+        auto &spansOnLine = group.second;
+
+        std::sort(spansOnLine.begin(), spansOnLine.end(), [](const DiagnosticSpan *a, const DiagnosticSpan *b) {
+            return a->Start.getPointer() < b->Start.getPointer();
+        });
+
+        unsigned bufId = _srcMgr.FindBufferContainingLoc(spansOnLine[0]->Start);
+        auto lineColBase = _srcMgr.getLineAndColumn(spansOnLine[0]->Start, bufId);
         auto buf = _srcMgr.getMemoryBuffer(bufId);
-        
+
         os.changeColor(llvm::raw_ostream::CYAN);
         os << "    --> ";
         os.resetColor();
         os << _srcMgr.getBufferInfo(bufId).Buffer->getBufferIdentifier()
-           << ":" << lineCol.first << ":" << lineCol.second << '\n';
+           << ':' << lineNo << ':' << lineColBase.second << '\n';
 
-        const char *ptr = span.Start.getPointer();
         const char *bufStart = buf->getBufferStart();
         const char *bufEnd = buf->getBufferEnd();
-
+        const char *ptr = spansOnLine[0]->Start.getPointer();
         const char *lineStart = ptr;
         while (lineStart > bufStart && *(lineStart - 1) != '\n') {
-            lineStart--;
+            --lineStart;
         }
         const char *lineEnd = ptr;
         while (lineEnd < bufEnd && *lineEnd != '\n') {
-            lineEnd++;
+            ++lineEnd;
         }
-
         std::string lineText(lineStart, lineEnd - lineStart);
-        
-        std::ostringstream gutter;
-        gutter << std::setw(4) << lineCol.first << " | ";
+
+        std::ostringstream gutterStream;
+        gutterStream << std::setw(4) << lineNo << " | ";
+        std::string gutter = gutterStream.str();
         os.changeColor(llvm::raw_ostream::CYAN);
-        os << gutter.str();
+        os << gutter;
         os.resetColor();
         os << lineText << '\n';
 
+        std::string indent(gutter.size() - 3, ' ');
+        
         os.changeColor(llvm::raw_ostream::CYAN);
-        for (int i = 0; i < gutter.str().size() - 3; ++i) {
-            os << " ";
-        }
-        os << " | ";
+        os << indent << " | ";
         os.resetColor();
 
-        os.changeColor(color, true);
-        for (int i = 1; i < lineCol.second; ++i) {
-            os << " ";
-        }
-        os << "^";
-        
-        const char *endPtr = span.End.getPointer();
-        int len = std::max(0, (int)(endPtr - ptr) - 1);
-        for (int i = 0; i < len; ++i) {
-            os << "~";
+        int topmostIndex = -1;
+        for (int i = (int)spansOnLine.size() - 1; i >= 0; --i) {
+            if (!spansOnLine[i]->Label.empty()) {
+                topmostIndex = i;
+                break;
+            }
         }
         
-        if (!span.Label.empty()) {
-            os << " " << span.Label;
+        int currentPos = 1;
+        for (int i = 0; i < spansOnLine.size(); ++i) {
+            auto *span = spansOnLine[i];
+            auto col = _srcMgr.getLineAndColumn(span->Start, bufId).second;
+            
+            for (; currentPos < col; ++currentPos) {
+                os << ' ';
+            }
+            
+            os.changeColor(color, true);
+            int len = std::max(1, (int)(span->End.getPointer() - span->Start.getPointer()));
+            for (int k = 0; k < len; ++k) {
+                os << '~';
+            }
+            currentPos += len;
+            os.resetColor();
+
+            if (i == topmostIndex) {
+                os.changeColor(color, true);
+                os << ' ' << span->Label;
+                os.resetColor();
+            }
         }
-        os.resetColor();
         os << '\n';
+
+        for (int i = topmostIndex - 1; i >= 0; --i) {
+            if (spansOnLine[i]->Label.empty()) continue;
+
+            os.changeColor(llvm::raw_ostream::CYAN);
+            os << indent << " | ";
+            os.resetColor();
+
+            currentPos = 1;
+            for (int j = 0; j <= i; ++j) {
+                auto col = _srcMgr.getLineAndColumn(spansOnLine[j]->Start, bufId).second;
+                for (; currentPos < col; ++currentPos) {
+                    os << ' ';
+                }
+                
+                os.changeColor(color, true);
+                if (j == i) {
+                    os << "| " << spansOnLine[j]->Label;
+                }
+                else if (!spansOnLine[j]->Label.empty()) {
+                    os << "|";
+                }
+                ++currentPos;
+                os.resetColor();
+            }
+            os << '\n';
+        }
     }
 
     for (const auto &note : diag.Notes) {
