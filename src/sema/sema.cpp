@@ -128,6 +128,8 @@ Semantic::analyzeFDS(FuncDeclStmt *fds) {
     }
     
     auto *funcHir = _builder.CreateFunc(func.GetMangledName(), fds->GetRetType(), hirArgs, fds->GetName().Name == "main");
+    auto *entry = _builder.CreateBlock(funcHir, "entry");
+    _builder.SetInsertPoint(entry);
 
     _funcsRetTypes.push(fds->GetRetType());
     _vars.push({});
@@ -156,10 +158,8 @@ Semantic::analyzeFDS(FuncDeclStmt *fds) {
             .AddSpan(fds->GetName().Start, fds->GetName().End);
     }
     else if (!hasRet && (!fds->GetRetType() || fds->GetRetType() && fds->GetRetType()->IsNothType())) {
-        _builder.SetInsertionPoint(funcHir);
         _builder.CreateRet(new NothType(llvm::SMLoc(), llvm::SMLoc()), nullptr);
     }
-    _builder.SetInsertionPoint(nullptr);
 
     if (fds->GetName().Name == "main") {
         bool correctRetType = !fds->GetRetType() || fds->GetRetType() && fds->GetRetType()->IsInteger() && fds->GetRetType()->AsInteger()->GetBitWidth() == 32;
@@ -258,10 +258,7 @@ Semantic::resolveFuncSignature(Function *func) {
         hirArgs.push_back(HIRFuncArgument(a.Name.Name, a.Type, nullptr));
     }
     
-    auto curFuncOld = _builder.GetContext().GetCurFunc();
-    _builder.SetInsertionPoint(nullptr);
     func->HirNode = static_cast<HIRFuncDeclStmt *>(_builder.CreateFunc(func->GetMangledName(), func->RetType, hirArgs, fds->GetName().Name == "main"));
-    _builder.SetInsertionPoint(curFuncOld);
     func->Status = SignatureReady;
 }
 
@@ -291,7 +288,8 @@ Semantic::analyzeFuncBody(FuncDeclStmt *fds) {
         createVar(a.Name.Name, Variable(a.Name, a.Type, false, Priv, Value::GetIncorrectValue(), Parameter, i));
     }
 
-    _builder.SetInsertionPoint(func->HirNode);
+    auto *entry = _builder.CreateBlock(func->HirNode, "entry");
+    _builder.SetInsertPoint(entry);
 
     bool hasRet = false;
     for (auto &s : fds->GetBody()) {
@@ -311,7 +309,6 @@ Semantic::analyzeFuncBody(FuncDeclStmt *fds) {
             .AddSpan(fds->GetName().Start, fds->GetName().End);
     }
     else if (!hasRet && (!fds->GetRetType() || fds->GetRetType() && fds->GetRetType()->IsNothType())) {
-        _builder.SetInsertionPoint(func->HirNode);
         _builder.CreateRet(new NothType(llvm::SMLoc(), llvm::SMLoc()), nullptr);
     }
 
@@ -323,24 +320,18 @@ Semantic::analyzeFuncBody(FuncDeclStmt *fds) {
                                   fds->GetArgs()[1].Type->AsPointer()->GetBaseType()->AsPointer()->GetBaseType()->IsChar();
 
         if (!correctRetType || !correctTypesOfArgs) {
+            auto err = _diag.Report(Error, "invalid signature for function 'main'");
+            err.SetCode(ErrInvalidMainFuncSig)
+                .AddHelp("try 'func main()' or 'func main(argc: i32, argv: **char): i32'");
             if (!correctRetType) {
-                _diag.Report(Error, "invalid signature for function 'main'")
-                    .SetCode(ErrInvalidMainFuncSig)
-                    .AddSpan(fds->GetName().Start, fds->GetName().End)
-                    .AddHelp("try 'func main()' or 'func main(argc: i32, argv: **char): i32'")
-                    .AddSpan(fds->GetRetType()->GetStartLoc(), fds->GetRetType()->GetEndLoc(), "expected 'i32' or 'noth'");
+                err.AddSpan(fds->GetRetType()->GetStartLoc(), fds->GetRetType()->GetEndLoc(), "expected 'i32' or 'noth'");
             }
             if (!correctTypesOfArgs && fds->GetArgs().size() != 0) {
-                _diag.Report(Error, "invalid signature for function 'main'")
-                    .SetCode(ErrInvalidMainFuncSig)
-                    .AddSpan(fds->GetName().Start, fds->GetName().End)
-                    .AddHelp("try 'func main()' or 'func main(argc: i32, argv: **char): i32'")
-                    .AddSpan(fds->GetArgs().front().Name.Start, fds->GetArgs().back().Type->GetEndLoc(), "expected nothing or 'i32, **char'");
+                err.AddSpan(fds->GetArgs().front().Name.Start, fds->GetArgs().back().Type->GetEndLoc(), "expected nothing or 'i32, **char'");
             }
         }
     }
     
-    _builder.SetInsertionPoint(nullptr);
     func->Status = BodyAnalyzed;
     _funcsRetTypes.pop();
 }
@@ -383,7 +374,6 @@ Semantic::analyzeUS(UsingStmt *us) {
                 hirArgs.push_back(HIRFuncArgument(a.Name.Name, a.Type, a.DefaultVal ? analyzeExpr(a.DefaultVal).HirNode : nullptr));
             }
             _builder.CreateFunc(c.GetMangledName(), c.RetType, hirArgs, name == "main", true);
-            _builder.SetInsertionPoint(nullptr);
         }
     }
 }

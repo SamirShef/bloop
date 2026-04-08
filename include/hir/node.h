@@ -20,7 +20,9 @@ enum HIRNodeKind : uint8_t {
     HIRNkFieldExpr,
     HIRNkFuncCallExpr,
     HIRNkMethodCallExpr,
-    HIRNkEndExprs
+    HIRNkEndExprs,
+
+    HIRNkBasicBlock,
 };
 
 class HIRNode {
@@ -32,6 +34,11 @@ public:
     HIRNodeKind
     GetKind() const {
         return _kind;
+    }
+
+    bool
+    IsTerminator() const {
+        return GetKind() == HIRNkRetStmt; // TODO: add branch and jmp into logic
     }
 };
 

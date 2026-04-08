@@ -37,8 +37,8 @@ class Semantic {
     std::stack<Scope> _vars;
 
 public:
-    explicit Semantic(DiagnosticEngine &d, Module *&m, const std::unordered_map<std::string, FileNode> &g)
-        : _diag(d), _mod(m), _builder(HIRContext()), _graph(g) {
+    explicit Semantic(DiagnosticEngine &d, Module *&m, HIRContext &c, const std::unordered_map<std::string, FileNode> &g)
+        : _diag(d), _mod(m), _builder(c), _graph(g) {
         _vars.push({});
     }
 
@@ -55,7 +55,7 @@ public:
         }
     }
 
-    HIRContext
+    HIRContext &
     GetContext() const {
         return _builder.GetContext();
     }

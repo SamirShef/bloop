@@ -69,7 +69,7 @@ Parser::parseVDS() {
     if (expect(TkEq)) {
         expr = parseExpr();
     }
-    return new VarDeclStmt(name, type, expr, firstTok.Kind == TkConst, access, firstTok.Start, peek().End);
+    return createNode<VarDeclStmt>(name, type, expr, firstTok.Kind == TkConst, access, firstTok.Start, peek().End);
 }
 
 Stmt *
@@ -117,7 +117,7 @@ Parser::parseFDS() {
         body.push_back(parseStmt());
     }
 
-    return new FuncDeclStmt(name, args, retType, body, accessCopy, firstTok.Start, peek().End);
+    return createNode<FuncDeclStmt>(name, args, retType, body, accessCopy, firstTok.Start, peek().End);
 }
 
 Stmt *
@@ -136,7 +136,7 @@ Parser::parseUS() {
         }
     }
     path.End = peek(-1).End;
-    return new UsingStmt(path, firstTok.Start, peek().End);
+    return createNode<UsingStmt>(path, firstTok.Start, peek().End);
 }
 
 Stmt *
@@ -146,14 +146,14 @@ Parser::parseRS() {
     if (peek().Kind != TkSemi) {
         expr = parseExpr();
     }
-    return new RetStmt(expr, firstTok.Start, peek().End);
+    return createNode<RetStmt>(expr, firstTok.Start, peek().End);
 }
 
 Expr *
 Parser::parsePrefixExpr(bool allowStruct) {
     const Token tok = advance();
     switch (tok.Kind) {
-        #define LIT(t, v) new LiteralExpr(Value(Value::Const, ValueData(v), new t, tok.Start, tok.End))
+        #define LIT(t, v) createNode<LiteralExpr>(Value(Value::Const, ValueData(v), new t, tok.Start, tok.End))
         #define INT_LIT(bw, iu) LIT(IntegerType(bw, iu, tok.Start, tok.End), (int64_t)stoll(tok.Val))
         #define FLOAT_LIT(t) LIT(FloatingType(FloatingType::t, tok.Start, tok.End), (double)stold(tok.Val))
         #define SIZE_LIT(iu) LIT(SizeType(iu, tok.Start, tok.End), (int64_t)stoll(tok.Val))
@@ -196,20 +196,20 @@ Parser::parsePrefixExpr(bool allowStruct) {
         
         case TkMinus:
         case TkBang: {
-            return new UnaryExpr(tok, parsePrefixExpr(allowStruct), tok.Start, peek().End);
+            return createNode<UnaryExpr>(tok, parsePrefixExpr(allowStruct), tok.Start, peek(-1).End);
         }
 
         case TkId: {
             if (peek().Kind == TkDot) {
-                Expr *expr = new VarExpr(tok);
+                Expr *expr = createNode<VarExpr>(tok);
                 return parseChain(expr);
             }
             else if (expect(TkLParen)) {
                 std::vector<Expr *> args;
                 parseArgsInto(args);
-                return new FuncCallExpr(tok, args, peek(-1).End);
+                return createNode<FuncCallExpr>(tok, args, peek(-1).End);
             }
-            return new VarExpr(tok);
+            return createNode<VarExpr>(tok);
         }
     }
     _diag.Report(Error, "expected expression")
@@ -230,7 +230,7 @@ Parser::parseExpr(int minPrec, bool allowStruct) {
         const Token op = advance();
 
         Expr *rhs = parseExpr(prec, allowStruct);
-        lhs = new BinaryExpr(lhs, op, rhs, lhs->GetStartLoc(), peek().End);
+        lhs = createNode<BinaryExpr>(lhs, op, rhs, lhs->GetStartLoc(), peek(-1).End);
     }
 
     return lhs;
@@ -249,10 +249,10 @@ Parser::parseChain(Expr *base) {
         if (expect(TkLParen)) {
             std::vector<Expr *> args;
             parseArgsInto(args);
-            base = new MethodCallExpr(base, name, args, peek(-1).End);
+            base = createNode<MethodCallExpr>(base, name, args, peek(-1).End);
         }
         else {
-            base = new FieldExpr(base, name);
+            base = createNode<FieldExpr>(base, name);
         }
     }
     return base;
@@ -364,7 +364,6 @@ Parser::consumeType() {
                 }
             }
             return new TupleType(types, c.Start, peek(-1).End);
-            //                                                 ^^ because ')' was skipped
         }
     }
     _diag.Report(Error, "expected type")
