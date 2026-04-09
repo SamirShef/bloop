@@ -28,6 +28,7 @@ Semantic::analyzeStmt(Stmt *stmt) {
     #define NODE(k, f, t) case k: return f(static_cast<t *>(stmt));
     switch (stmt->GetKind()) {
         NODE(NkVarDeclStmt, analyzeVDS, VarDeclStmt);
+        NODE(NkVarAsgnStmt, analyzeVAS, VarAsgnStmt);
         NODE(NkFuncDeclStmt, analyzeFuncBody, FuncDeclStmt);
         NODE(NkUsingStmt, analyzeUS, UsingStmt);
         NODE(NkRetStmt, analyzeRS, RetStmt);
@@ -87,6 +88,29 @@ Semantic::analyzeVDS(VarDeclStmt *vds) {
     std::string mangledName = _vars.size() == 1 ? _mod->ToString() + "." + vds->GetName().Name : vds->GetName().Name;
     _builder.CreateVar(mangledName, vds->GetType(), exprRes.HirNode, var.Storage, vds->IsConst());
     createVar(vds->GetName().Name, var);
+}
+
+void
+Semantic::analyzeVAS(VarAsgnStmt *vas) {
+    auto varsCopy = _vars;
+    while (!varsCopy.empty()) {
+        auto &top = varsCopy.top();
+        if (auto it = top.VarsMap.find(vas->GetName().Name); it != top.VarsMap.end()) {
+            if (top.Vars[it->second].IsConst) {
+                _diag.Report(Error, "reassignment of read-only variable '" + top.Vars[it->second].Name.Name + "'")
+                    .SetCode(ErrReasgnConst)
+                    .AddSpan(vas->GetStartLoc(), vas->GetEndLoc());
+            }
+            auto res = analyzeExpr(vas->GetExpr());
+            implicitlyCast(res, &top.Vars[it->second].Type);
+            _builder.CreateStore(top.Vars[it->second].Storage, top.Vars[it->second].Index, res.HirNode);
+            return;
+        }
+        varsCopy.pop();
+    }
+    _diag.Report(Error, "variable is undeclared in this scope")
+        .SetCode(ErrUndeclaredVar)
+        .AddSpan(vas->GetStartLoc(), vas->GetEndLoc(), "undeclared");
 }
 
 void

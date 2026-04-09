@@ -55,6 +55,9 @@ private:
     llvm::Value *
     generateVDS(HIRVarDeclStmt *vds);
 
+    llvm::Value *
+    generateVarStore(HIRVarStore *varStore);
+
     void
     declareFDS(HIRFuncDeclStmt *fds);
 

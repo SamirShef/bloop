@@ -14,6 +14,11 @@ public:
     explicit MethodCallExpr(Expr *b, NameObj n, std::vector<Expr *> &a, llvm::SMLoc e)
         : _base(b), _name(n), _args(a), Expr(NkMethodCallExpr, b->GetStartLoc(), e) {}
 
+    constexpr static bool
+    classof(const Node *node) {
+        return node->GetKind() == NkMethodCallExpr;
+    }
+
     Expr *
     GetBase() const {
         return _base;

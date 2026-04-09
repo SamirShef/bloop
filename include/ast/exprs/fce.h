@@ -12,6 +12,11 @@ class FuncCallExpr : public Expr {
 public:
     explicit FuncCallExpr(NameObj n, std::vector<Expr *> &a, llvm::SMLoc e) : _name(n), _args(a), Expr(NkFuncCallExpr, n.Start, e) {}
 
+    constexpr static bool
+    classof(const Node *node) {
+        return node->GetKind() == NkFuncCallExpr;
+    }
+
     NameObj
     GetName() const {
         return _name;

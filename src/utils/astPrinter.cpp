@@ -43,6 +43,11 @@ ASTPrinter::printVDS(VarDeclStmt *vds) {
 }
 
 void
+ASTPrinter::printVAS(VarAsgnStmt *vas) {
+    // TODO: implement
+}
+
+void
 ASTPrinter::printFDS(FuncDeclStmt *fds) {
     printIndent();
     _out << "FuncDeclStmt ";
@@ -121,6 +126,11 @@ ASTPrinter::printIES(IfElseStmt *ies) {
             _connectionStack.pop_back();
         }
     }
+}
+
+void
+ASTPrinter::printFLS(ForLoopStmt *fls) {
+    // TODO: implement
 }
 
 void

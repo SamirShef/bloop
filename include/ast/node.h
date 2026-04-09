@@ -7,10 +7,12 @@ namespace bloop {
 enum NodeKind : uint8_t {
     NkStartStmts,
     NkVarDeclStmt,
+    NkVarAsgnStmt,
     NkFuncDeclStmt,
     NkUsingStmt,
     NkRetStmt,
     NkIfElseStmt,
+    NkForLoopStmt,
     NkEndStmts,
 
     NkStartExprs,

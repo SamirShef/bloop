@@ -142,8 +142,15 @@ public:
     }
 
     HIRVarExpr *
-    CreateLoadVar(StorageKind kind, uint index, Module *parent = nullptr) {
+    CreateLoadVar(StorageKind kind, int index, Module *parent = nullptr) {
         return _ctx.CreateNode<HIRVarExpr>(kind, index, parent);
+    }
+
+    HIRVarStore *
+    CreateStore(StorageKind kind, int index, HIRNode *expr) {
+        auto *node = _ctx.CreateNode<HIRVarStore>(kind, index, expr);
+        AddToBlock(node);
+        return node;
     }
 
     HIRFuncCallExpr *

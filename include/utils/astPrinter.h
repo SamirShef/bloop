@@ -64,6 +64,9 @@ private:
 
     void
     printVDS(VarDeclStmt *vds);
+
+    void
+    printVAS(VarAsgnStmt *vas);
     
     void
     printFDS(FuncDeclStmt *fds);
@@ -76,6 +79,9 @@ private:
 
     void
     printIES(IfElseStmt *ies);
+
+    void
+    printFLS(ForLoopStmt *fls);
 
     void
     printBE(BinaryExpr *be);

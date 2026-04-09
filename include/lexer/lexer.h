@@ -38,7 +38,7 @@ public:
             if (tokens[i].Kind == TkUsing) {
                 ++i;
                 std::string dependence;
-                while (tokens[i].Kind != TkSemi && tokens[i].Kind != TkEof && tokens[i].Kind != TkUnknown) {
+                while (tokens[i].Kind != TkSemi && tokens[i].Kind != TkUnknown) {
                     dependence += tokens[i].Val;
                     ++i;
                 }

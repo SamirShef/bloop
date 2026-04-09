@@ -16,6 +16,11 @@ public:
     explicit VarDeclStmt(NameObj n, Type *t, Expr *expr, bool ic, AccessModifier a, llvm::SMLoc s, llvm::SMLoc e)
         : _name(n), _type(t), _expr(expr), _isConst(ic), Stmt(a, NkVarDeclStmt, s, e) {}
 
+    constexpr static bool
+    classof(const Node *node) {
+        return node->GetKind() == NkVarDeclStmt;
+    }
+
     NameObj
     GetName() const {
         return _name;

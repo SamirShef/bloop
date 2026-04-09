@@ -10,6 +10,11 @@ class LiteralExpr : public Expr {
 public:
     explicit LiteralExpr(Value v) : _val(v), Expr(NkLitExpr, v.Start, v.End) {}
 
+    constexpr static bool
+    classof(const Node *node) {
+        return node->GetKind() == NkLitExpr;
+    }
+
     Value
     GetVal() const {
         return _val;

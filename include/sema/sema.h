@@ -45,12 +45,18 @@ public:
     void
     Analyze(std::vector<Stmt *> &ast) {
         for (auto &s : ast) {
+            if (!s) {
+                continue;
+            }
             if (s->GetKind() == NkFuncDeclStmt) {
-                registerFunc(static_cast<FuncDeclStmt *>(s));
+                registerFunc(llvm::cast<FuncDeclStmt>(s));
             }
         }
 
         for (auto &s : ast) {
+            if (!s) {
+                continue;
+            }
             analyzeStmt(s);
         }
     }
@@ -66,6 +72,9 @@ private:
 
     void
     analyzeVDS(VarDeclStmt *vds);
+
+    void
+    analyzeVAS(VarAsgnStmt *vas);
     
     void
     analyzeFDS(FuncDeclStmt *fds);

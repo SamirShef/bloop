@@ -14,6 +14,11 @@ public:
     explicit IfElseStmt(Expr *c, std::vector<Stmt *> &t, std::vector<Stmt *> &el, llvm::SMLoc s, llvm::SMLoc e)
         : _cond(c), _then(t), _else(el), Stmt(Priv, NkIfElseStmt, s, e) {}
     
+    constexpr static bool
+    classof(const Node *node) {
+        return node->GetKind() == NkIfElseStmt;
+    }
+    
     Expr *
     GetCond() const {
         return _cond;

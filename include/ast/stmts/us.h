@@ -10,6 +10,11 @@ class UsingStmt : public Stmt {
 public:
     explicit UsingStmt(NameObj p, llvm::SMLoc s, llvm::SMLoc e) : _path(p), Stmt(Pub, NkUsingStmt, s, e) {}
 
+    constexpr static bool
+    classof(const Node *node) {
+        return node->GetKind() == NkUsingStmt;
+    }
+    
     NameObj
     GetPath() const {
         return _path;

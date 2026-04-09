@@ -12,6 +12,7 @@ CodeGen::generateNode(HIRNode *node) {
     #define NODE(k, f, t) case k: return f(static_cast<t *>(node));
     switch (node->GetKind()) {
         NODE(HIRNkVarDeclStmt, generateVDS, HIRVarDeclStmt);
+        NODE(HIRNkVarStore, generateVarStore, HIRVarStore);
         NODE(HIRNkFuncDeclStmt, generateFDS, HIRFuncDeclStmt);
         NODE(HIRNkRetStmt, generateRS, HIRRetStmt);
         NODE(HIRNkBasicBlock, generateBB, HIRBasicBlock);
@@ -42,6 +43,30 @@ CodeGen::generateVDS(HIRVarDeclStmt *vds) {
         }
     }
     return var;
+}
+
+llvm::Value *
+CodeGen::generateVarStore(HIRVarStore *varStore) {
+    llvm::Value *ptr = nullptr;
+    switch (varStore->GetStorageKind()) {
+        case Static: {
+            ptr = _globals[varStore->GetIndex()];
+            break;
+        }
+        case Stack: {
+            auto funcName = _builder.GetInsertBlock()->getParent()->getName().str();
+            auto func = _funcsMap.at(funcName);
+            ptr = func.Locals[varStore->GetIndex()];
+            break;
+        }
+        case Parameter: {
+            auto args = _builder.GetInsertBlock()->getParent()->args();
+            auto arg = args.begin() + varStore->GetIndex();
+            ptr = _builder.CreateAlloca(arg->getType(), nullptr, arg->getName() + ".alloca");
+            break;
+        }
+    }
+    return _builder.CreateStore(generateExpr(varStore->GetExpr()), ptr);
 }
 
 void
