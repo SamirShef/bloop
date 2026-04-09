@@ -88,6 +88,12 @@ Parser::getStmtFromExpr(Expr *expr, bool consumeSemi) {
             EXPECT_SEMI();
             return res;
         }
+        case NkFuncCallExpr: {
+            FuncCallExpr *fce = llvm::cast<FuncCallExpr>(expr);
+            Stmt *res = createNode<FuncCallStmt>(fce);
+            EXPECT_SEMI();
+            return res;
+        }
     }
     const Token tok = advance();
     _diag.Report(Error, "expected statement")

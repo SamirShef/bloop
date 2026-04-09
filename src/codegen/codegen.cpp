@@ -14,6 +14,7 @@ CodeGen::generateNode(HIRNode *node) {
         NODE(HIRNkVarDeclStmt, generateVDS, HIRVarDeclStmt);
         NODE(HIRNkVarStore, generateVarStore, HIRVarStore);
         NODE(HIRNkFuncDeclStmt, generateFDS, HIRFuncDeclStmt);
+        NODE(HIRNkFuncCallExpr, generateFCE, HIRFuncCallExpr);
         NODE(HIRNkRetStmt, generateRS, HIRRetStmt);
         NODE(HIRNkBasicBlock, generateBB, HIRBasicBlock);
         NODE(HIRNkBranch, generateBR, HIRBranch);

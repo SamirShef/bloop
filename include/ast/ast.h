@@ -1,5 +1,6 @@
 #pragma once
 #include <ast/stmts/fds.h>
+#include <ast/stmts/fcs.h>
 #include <ast/stmts/us.h>
 #include <ast/stmts/vds.h>
 #include <ast/stmts/vas.h>

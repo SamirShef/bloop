@@ -30,6 +30,7 @@ Semantic::analyzeStmt(Stmt *stmt) {
         NODE(NkVarDeclStmt, analyzeVDS, VarDeclStmt);
         NODE(NkVarAsgnStmt, analyzeVAS, VarAsgnStmt);
         NODE(NkFuncDeclStmt, analyzeFuncBody, FuncDeclStmt);
+        NODE(NkFuncCallStmt, analyzeFCS, FuncCallStmt);
         NODE(NkUsingStmt, analyzeUS, UsingStmt);
         NODE(NkRetStmt, analyzeRS, RetStmt);
         NODE(NkIfElseStmt, analyzeIES, IfElseStmt);
@@ -380,6 +381,12 @@ Semantic::analyzeFuncBody(FuncDeclStmt *fds) {
     
     func->Status = BodyAnalyzed;
     _funcsRetTypes.pop();
+}
+
+void
+Semantic::analyzeFCS(FuncCallStmt *fcs) {
+    auto res = analyzeExpr(fcs->GetFCE());
+    _builder.AddToBlock(res.HirNode);
 }
 
 void

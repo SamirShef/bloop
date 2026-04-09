@@ -95,6 +95,9 @@ private:
     analyzeFuncBody(FuncDeclStmt *fds);
 
     void
+    analyzeFCS(FuncCallStmt *fcs);
+
+    void
     analyzeUS(UsingStmt *us);
 
     void
