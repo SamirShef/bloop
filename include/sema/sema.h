@@ -85,6 +85,9 @@ private:
     void
     analyzeRS(RetStmt *rs);
 
+    void
+    analyzeIES(IfElseStmt *ies);
+
     SemanticResult
     analyzeExpr(Expr *expr);
 

@@ -11,6 +11,7 @@ enum HIRNodeKind : uint8_t {
     HIRNkRetStmt,
     HIRNkEndStmts,
     HIRNkCast,
+    HIRNkBranch,
 
     HIRNkStartExprs,
     HIRNkLitExpr,
@@ -38,7 +39,7 @@ public:
 
     bool
     IsTerminator() const {
-        return GetKind() == HIRNkRetStmt; // TODO: add branch and jmp into logic
+        return GetKind() == HIRNkRetStmt || GetKind() == HIRNkBranch;
     }
 };
 

@@ -49,6 +49,9 @@ private:
 
     Stmt *
     parseRS();
+
+    Stmt *
+    parseIfElse();
     
     Expr *
     parsePrefixExpr(bool allowStruct = true);

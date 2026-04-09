@@ -67,10 +67,6 @@ Compile(const std::unordered_map<std::string, FileNode> &graph, const std::files
     std::string tripleStr = llvm::sys::getDefaultTargetTriple();
     llvm::Triple triple(tripleStr);
 
-    if (!EmitObjectFile(llvmMod, objPath.string(), tripleStr)) {
-        return { false, "" };
-    }
-
     if (EmitAction == EmitLLVM) {
         std::error_code ec;
         std::filesystem::path llvmIRPath = objPath;
@@ -81,6 +77,10 @@ Compile(const std::unordered_map<std::string, FileNode> &graph, const std::files
         }
         llvmMod->print(os, nullptr);
         std::cout << "     [Info] LLVM IR emitted to: " << llvmIRPath.string() << '\n';
+    }
+    
+    if (!EmitObjectFile(llvmMod, objPath.string(), tripleStr)) {
+        return { false, "" };
     }
 
     return { true, objPath.string() };

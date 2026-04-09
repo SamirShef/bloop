@@ -43,6 +43,10 @@ Parser::parseStmt(bool consumeSemi) {
             EXPECT_SEMI();
             return res;
         }
+        case TkIf: {
+            Stmt *res = parseIfElse();
+            return res;
+        }
     }
     const Token tok = advance();
     _diag.Report(Error, "expected statement")
@@ -147,6 +151,33 @@ Parser::parseRS() {
         expr = parseExpr();
     }
     return createNode<RetStmt>(expr, firstTok.Start, peek().End);
+}
+
+Stmt *
+Parser::parseIfElse() {
+    const Token firstTok = advance();
+    Expr *expr = parseExpr();
+    if (!expect(TkLBrace)) {
+        _diag.Report(Error, "expected '{'")
+            .SetCode(ErrExpectedToken)
+            .AddSpan(peek().Start, peek().End);
+    }
+    std::vector<Stmt *> thenBody;
+    std::vector<Stmt *> elseBody;
+    while (!expect(TkRBrace)) {
+        thenBody.push_back(parseStmt());
+    }
+    if (expect(TkElse)) {
+        if (!expect(TkLBrace)) {
+            _diag.Report(Error, "expected '{'")
+                .SetCode(ErrExpectedToken)
+                .AddSpan(peek().Start, peek().End);
+        }
+        while (!expect(TkRBrace)) {
+            elseBody.push_back(parseStmt());
+        }
+    }
+    return createNode<IfElseStmt>(expr, thenBody, elseBody, firstTok.Start, peek(-1).End);
 }
 
 Expr *

@@ -10,6 +10,7 @@ enum NodeKind : uint8_t {
     NkFuncDeclStmt,
     NkUsingStmt,
     NkRetStmt,
+    NkIfElseStmt,
     NkEndStmts,
 
     NkStartExprs,

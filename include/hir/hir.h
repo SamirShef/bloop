@@ -1,3 +1,4 @@
+#include <hir/br.h>
 #include <hir/be.h>
 #include <hir/cast.h>
 #include <hir/fds.h>

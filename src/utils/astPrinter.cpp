@@ -100,6 +100,28 @@ ASTPrinter::printRS(RetStmt *rs) {
 }
 
 void
+ASTPrinter::printIES(IfElseStmt *ies) {
+    printIndent();
+    _out << "IfElseStmt ";
+    printLineCol(ies->GetStartLoc());
+    _out << '\n';
+    ++_indent;
+    printNode(ies->GetCond());
+    --_indent;
+    ++_indent;
+    for (auto &s : ies->GetThenBranch()) {
+        printNode(s);
+    }
+    --_indent;
+    if (ies->GetElseBranch().size()) {
+        for (auto &s : ies->GetElseBranch()) {
+            printNode(s);
+        }
+        --_indent;
+    }
+}
+
+void
 ASTPrinter::printBE(BinaryExpr *be) {
     printIndent();
     _out << "BinaryExpr ";

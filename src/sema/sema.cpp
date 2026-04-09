@@ -4,6 +4,21 @@
 
 namespace bloop {
 
+static bool
+isComparisonOp(TokenKind kind) {
+    switch (kind) {
+        case TkEqEq:
+        case TkNotEq:
+        case TkLt:
+        case TkGt:
+        case TkLtEq:
+        case TkGtEq:
+            return true;
+        default:
+            return false;
+    }
+}
+
 void
 Semantic::analyzeStmt(Stmt *stmt) {
     if (!stmt) {
@@ -16,6 +31,7 @@ Semantic::analyzeStmt(Stmt *stmt) {
         NODE(NkFuncDeclStmt, analyzeFuncBody, FuncDeclStmt);
         NODE(NkUsingStmt, analyzeUS, UsingStmt);
         NODE(NkRetStmt, analyzeRS, RetStmt);
+        NODE(NkIfElseStmt, analyzeIES, IfElseStmt);
         default: {
             _diag.Report(Error, "compiler limitation: statement type is currently unimplemented")
                 .SetCode(ErrUnimplementedStmt)
@@ -399,6 +415,36 @@ Semantic::analyzeRS(RetStmt *rs) {
     }
 }
 
+void
+Semantic::analyzeIES(IfElseStmt *ies) {
+    auto thenBody = _builder.CreateBlock(_builder.GetParent(), "cond.then");
+    auto elseBody = _builder.CreateBlock(_builder.GetParent(), "cond.else");
+    auto mergeBody = _builder.CreateBlock(_builder.GetParent(), "cond.merge");
+
+    auto condRes = analyzeExpr(ies->GetCond());
+    Type *boolType = new IntegerType(1, false, condRes.Val.Start, condRes.Val.End);
+    implicitlyCast(condRes, &boolType);
+    _builder.CreateBr(condRes.HirNode, thenBody, elseBody);
+
+    _builder.SetInsertPoint(thenBody);
+    _vars.push({});
+    for (auto &s : ies->GetThenBranch()) {
+        analyzeStmt(s);
+    }
+    _vars.pop();
+    _builder.CreateBr(mergeBody);
+
+    _builder.SetInsertPoint(elseBody);
+    _vars.push({});
+    for (auto &s : ies->GetElseBranch()) {
+        analyzeStmt(s);
+    }
+    _vars.pop();
+    _builder.CreateBr(mergeBody);
+
+    _builder.SetInsertPoint(mergeBody);
+}
+
 Semantic::SemanticResult
 Semantic::analyzeExpr(Expr *expr) {
     #define NODE(k, f, t) case k: return f(static_cast<t *>(expr));
@@ -432,10 +478,18 @@ Semantic::analyzeBE(BinaryExpr *be) {
     lhsRes = implicitlyCast(lhsRes, &commonType);
     rhsRes = implicitlyCast(rhsRes, &commonType);
 
-    HIRNode *binNode = _builder.CreateBinary(commonType, lhsRes.HirNode, rhsRes.HirNode, tokenKindToHIRBk(be->GetOp().Kind));
+    Type *resultType = nullptr;
+    if (isComparisonOp(be->GetOp().Kind)) {
+        resultType = new IntegerType(1, false, be->GetStartLoc(), be->GetEndLoc());
+    }
+    else {
+        resultType = commonType;
+    }
+
+    HIRNode *binNode = _builder.CreateBinary(resultType, lhsRes.HirNode, rhsRes.HirNode, tokenKindToHIRBk(be->GetOp().Kind));
 
     if (lhs.IsUnknown() || rhs.IsUnknown()) {
-        return { Value(Value::Unknown, ValueData(), commonType, be->GetStartLoc(), be->GetEndLoc()), binNode };
+        return { Value(Value::Unknown, ValueData(), resultType, be->GetStartLoc(), be->GetEndLoc()), binNode };
     }
 
     // TODO: add suporting of strings
@@ -474,8 +528,8 @@ Semantic::analyzeBE(BinaryExpr *be) {
         #undef CASE
     }
     
-    switch (commonType->GetKind()) {
-        #define VAL(t) Value(Value::Const, ValueData(static_cast<t>(res)), commonType, be->GetStartLoc(), be->GetEndLoc())
+    switch (resultType->GetKind()) {
+        #define VAL(t) Value(Value::Const, ValueData(static_cast<t>(res)), resultType, be->GetStartLoc(), be->GetEndLoc())
         case Type::Integer:
             return { VAL(int64_t), _builder.CreateLiteral(VAL(int64_t)) };
         case Type::Floating:

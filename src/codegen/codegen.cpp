@@ -3,10 +3,10 @@
 
 namespace bloop {
 
-void
+llvm::Value *
 CodeGen::generateNode(HIRNode *node) {
     if (!node) {
-        return;
+        return nullptr;
     }
 
     #define NODE(k, f, t) case k: return f(static_cast<t *>(node));
@@ -15,11 +15,12 @@ CodeGen::generateNode(HIRNode *node) {
         NODE(HIRNkFuncDeclStmt, generateFDS, HIRFuncDeclStmt);
         NODE(HIRNkRetStmt, generateRS, HIRRetStmt);
         NODE(HIRNkBasicBlock, generateBB, HIRBasicBlock);
+        NODE(HIRNkBranch, generateBR, HIRBranch);
     }
     #undef NODE
 }
 
-void
+llvm::Value *
 CodeGen::generateVDS(HIRVarDeclStmt *vds) {
     llvm::Value *var = nullptr;
     llvm::Value *val = vds->GetExpr() ? generateExpr(vds->GetExpr()) : (vds->GetStorageKind() == Extern ? nullptr : llvm::ConstantExpr::getNullValue(getType(vds->GetType())));
@@ -40,6 +41,7 @@ CodeGen::generateVDS(HIRVarDeclStmt *vds) {
             break;
         }
     }
+    return var;
 }
 
 void
@@ -64,7 +66,7 @@ CodeGen::declareFDS(HIRFuncDeclStmt *fds) {
     }
 }
 
-void
+llvm::Value *
 CodeGen::generateFDS(HIRFuncDeclStmt *fds) {
     llvm::Function *func = _funcsMap.at(fds->GetName()).Func;
     
@@ -75,31 +77,47 @@ CodeGen::generateFDS(HIRFuncDeclStmt *fds) {
     }
 
     if (fds->IsDeclaration()) {
-        return;
+        return nullptr;
+    }
+
+    _blockMap.clear();
+    for (auto &bb : fds->GetBody()) {
+        auto *llvmBB = llvm::BasicBlock::Create(_context, bb->GetName(), func);
+        _blockMap[bb] = llvmBB;
     }
 
     for (auto &bb : fds->GetBody()) {
         generateBB(bb);
     }
+    return func;
 }
 
-void
+llvm::Value *
 CodeGen::generateRS(HIRRetStmt *rs) {
     if (rs->GetExpr()) {
-        _builder.CreateRet(generateExpr(rs->GetExpr()));
+        return _builder.CreateRet(generateExpr(rs->GetExpr()));
     }
     else {
-        _builder.CreateRetVoid();
+        return _builder.CreateRetVoid();
     }
 }
 
-void
+llvm::Value *
 CodeGen::generateBB(HIRBasicBlock *bb) {
-    llvm::BasicBlock *block = llvm::BasicBlock::Create(_context, bb->GetName(), _module->getFunction(bb->GetParent()->GetName()));
+    llvm::BasicBlock *block = _blockMap.at(bb);
     _builder.SetInsertPoint(block);
     for (auto &s : bb->GetInstructions()) {
         generateNode(s);
     }
+    return block;
+}
+
+llvm::Value *
+CodeGen::generateBR(HIRBranch *br) {
+    if (br->GetCond()) {
+        return _builder.CreateCondBr(generateExpr(br->GetCond()), _blockMap.at(br->GetThen()), _blockMap.at(br->GetElse()));
+    }
+    return _builder.CreateBr(_blockMap.at(br->GetThen()));
 }
 
 void

@@ -21,6 +21,8 @@ class CodeGen {
     std::vector<llvm::Function *> _funcs;
     llvm::Function *_userMainFunc = nullptr;
 
+    std::unordered_map<HIRBasicBlock *, llvm::BasicBlock *> _blockMap;
+
 public:
     explicit CodeGen(std::string name, std::vector<HIRVarDeclStmt *> &g, std::vector<HIRFuncDeclStmt *> &f)
         : _hirGlobals(g), _hirFunctions(f), _context(), _builder(_context), _module(new llvm::Module(name, _context)) {}
@@ -47,23 +49,26 @@ public:
     }
 
 private:
-    void
+    llvm::Value *
     generateNode(HIRNode *node);
 
-    void
+    llvm::Value *
     generateVDS(HIRVarDeclStmt *vds);
 
     void
     declareFDS(HIRFuncDeclStmt *fds);
 
-    void
+    llvm::Value *
     generateFDS(HIRFuncDeclStmt *fds);
     
-    void
+    llvm::Value *
     generateRS(HIRRetStmt *rs);
 
-    void
+    llvm::Value *
     generateBB(HIRBasicBlock *bb);
+    
+    llvm::Value *
+    generateBR(HIRBranch *br);
 
     void
     generateImplicitMain();

@@ -67,6 +67,11 @@ public:
         return bb;
     }
 
+    HIRFuncDeclStmt *
+    GetParent() const {
+        return _insertBlock->GetParent();
+    }
+
     void
     SetInsertPoint(HIRBasicBlock* bb) {
         _insertBlock = bb;
@@ -105,6 +110,20 @@ public:
     HIRCastNode *
     CreateCast(CastKind kind, HIRNode *expr, Type *from, Type *to) {
         return _ctx.CreateNode<HIRCastNode>(kind, expr, from, to);
+    }
+
+    HIRBranch *
+    CreateBr(HIRBasicBlock *thenBlock) {
+        auto *node = _ctx.CreateNode<HIRBranch>(thenBlock);
+        AddToBlock(node);
+        return node;
+    }
+
+    HIRBranch *
+    CreateBr(HIRNode *cond, HIRBasicBlock *thenBlock, HIRBasicBlock *elseBlock) {
+        auto *node = _ctx.CreateNode<HIRBranch>(cond, thenBlock, elseBlock);
+        AddToBlock(node);
+        return node;
     }
 
     HIRLiteralExpr *
