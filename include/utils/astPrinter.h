@@ -84,6 +84,12 @@ private:
     printFLS(ForLoopStmt *fls);
 
     void
+    printBS(BreakStmt *bs);
+
+    void
+    printCS(ContinueStmt *cs);
+
+    void
     printBE(BinaryExpr *be);
 
     void

@@ -40,6 +40,7 @@ enum ErrorCode : uint8_t {
     ErrPrivateSymbol,
     ErrUndeclaredSymbol,
     ErrReasgnConst,
+    ErrControlFlowOpOutsideLoop,
 };
 
 enum WarnCode : uint8_t {

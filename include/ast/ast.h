@@ -6,6 +6,8 @@
 #include <ast/stmts/rs.h>
 #include <ast/stmts/ies.h>
 #include <ast/stmts/fls.h>
+#include <ast/stmts/bs.h>
+#include <ast/stmts/cs.h>
 
 #include <ast/exprs/be.h>
 #include <ast/exprs/le.h>

@@ -13,6 +13,8 @@ enum NodeKind : uint8_t {
     NkRetStmt,
     NkIfElseStmt,
     NkForLoopStmt,
+    NkBreakStmt,
+    NkContinueStmt,
     NkEndStmts,
 
     NkStartExprs,

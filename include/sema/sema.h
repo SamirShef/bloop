@@ -36,6 +36,12 @@ class Semantic {
     std::stack<Scope> _vars;
     unsigned _currentFuncVarCount = 0;
 
+    struct LoopFrame {
+        HIRBasicBlock *Break;
+        HIRBasicBlock *Continue;
+    };
+    std::stack<LoopFrame> _loops;
+
 public:
     explicit Semantic(DiagnosticEngine &d, Module *&m, HIRContext &c, const std::unordered_map<std::string, FileNode> &g)
         : _diag(d), _mod(m), _builder(c), _graph(g) {
@@ -99,6 +105,12 @@ private:
 
     void
     analyzeFLS(ForLoopStmt *fls);
+
+    void
+    analyzeBS(BreakStmt *bs);
+
+    void
+    analyzeCS(ContinueStmt *cs);
 
     SemanticResult
     analyzeExpr(Expr *expr);

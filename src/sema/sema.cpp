@@ -34,6 +34,8 @@ Semantic::analyzeStmt(Stmt *stmt) {
         NODE(NkRetStmt, analyzeRS, RetStmt);
         NODE(NkIfElseStmt, analyzeIES, IfElseStmt);
         NODE(NkForLoopStmt, analyzeFLS, ForLoopStmt);
+        NODE(NkBreakStmt, analyzeBS, BreakStmt);
+        NODE(NkContinueStmt, analyzeCS, ContinueStmt);
         default: {
             _diag.Report(Error, "compiler limitation: statement type is currently unimplemented")
                 .SetCode(ErrUnimplementedStmt)
@@ -483,6 +485,8 @@ Semantic::analyzeFLS(ForLoopStmt *fls) {
     auto body = _builder.CreateBlock(_builder.GetParent(), "for.body");
     auto exit = _builder.CreateBlock(_builder.GetParent(), "for.exit");
     _builder.CreateBr(indexator);
+
+    _loops.push({ exit, cond });
     
     _builder.SetInsertPoint(indexator);
     if (fls->GetIndexator()) {
@@ -508,9 +512,33 @@ Semantic::analyzeFLS(ForLoopStmt *fls) {
     }
     _builder.CreateBr(cond);
     
+    _loops.pop();
+    
     _vars.pop();
 
     _builder.SetInsertPoint(exit);
+}
+
+void
+Semantic::analyzeBS(BreakStmt *bs) {
+    if (_loops.empty()) {
+        _diag.Report(Error, "cannot 'break' outside of a loop")
+            .SetCode(ErrControlFlowOpOutsideLoop)
+            .AddSpan(bs->GetStartLoc(), bs->GetEndLoc());
+        return;
+    }
+    _builder.CreateBr(_loops.top().Break);
+}
+
+void
+Semantic::analyzeCS(ContinueStmt *cs) {
+    if (_loops.empty()) {
+        _diag.Report(Error, "cannot 'continue' outside of a loop")
+            .SetCode(ErrControlFlowOpOutsideLoop)
+            .AddSpan(cs->GetStartLoc(), cs->GetEndLoc());
+        return;
+    }
+    _builder.CreateBr(_loops.top().Continue);
 }
 
 Semantic::SemanticResult

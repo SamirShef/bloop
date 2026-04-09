@@ -56,6 +56,18 @@ Parser::parseStmt(bool consumeSemi) {
             Stmt *res = parseFLS();
             return res;
         }
+        case TkBreak: {
+            const Token firstTok = advance();
+            Stmt *res = createNode<BreakStmt>(firstTok.Start, peek().End);
+            EXPECT_SEMI();
+            return res;
+        }
+        case TkContinue: {
+            const Token firstTok = advance();
+            Stmt *res = createNode<ContinueStmt>(firstTok.Start, peek().End);
+            EXPECT_SEMI();
+            return res;
+        }
         case TkId: {
             Expr *expr = parseExpr();
             return getStmtFromExpr(expr, consumeSemi);

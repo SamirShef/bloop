@@ -17,6 +17,8 @@ ASTPrinter::printNode(Node *node) {
         NODE(NkRetStmt, printRS, RetStmt);
         NODE(NkIfElseStmt, printIES, IfElseStmt);
         NODE(NkForLoopStmt, printFLS, ForLoopStmt);
+        NODE(NkBreakStmt, printBS, BreakStmt);
+        NODE(NkContinueStmt, printCS, ContinueStmt);
         NODE(NkBinaryExpr, printBE, BinaryExpr);
         NODE(NkLitExpr, printLE, LiteralExpr);
         NODE(NkUnaryExpr, printUE, UnaryExpr);
@@ -137,6 +139,9 @@ ASTPrinter::printIES(IfElseStmt *ies) {
             _connectionStack.pop_back();
         }
     }
+    if (_connectionStack.empty()) {
+        _out << '\n';
+    }
 }
 
 void
@@ -166,6 +171,31 @@ ASTPrinter::printFLS(ForLoopStmt *fls) {
         _connectionStack.push_back(i != fls->GetBody().size() - 1);
         printNode(fls->GetBody()[i]);
         _connectionStack.pop_back();
+    }
+    if (_connectionStack.empty()) {
+        _out << '\n';
+    }
+}
+
+void
+ASTPrinter::printBS(BreakStmt *bs) {
+    printIndent();
+    _out << "BreakStmt ";
+    printLineCol(bs->GetStartLoc());
+    _out << '\n';
+    if (_connectionStack.empty()) {
+        _out << '\n';
+    }
+}
+
+void
+ASTPrinter::printCS(ContinueStmt *cs) {
+    printIndent();
+    _out << "ContinueStmt ";
+    printLineCol(cs->GetStartLoc());
+    _out << '\n';
+    if (_connectionStack.empty()) {
+        _out << '\n';
     }
 }
 
