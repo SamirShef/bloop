@@ -12,7 +12,10 @@ ASTPrinter::printNode(Node *node) {
     switch (node->GetKind()) {
         NODE(NkVarDeclStmt, printVDS, VarDeclStmt);
         NODE(NkVarAsgnStmt, printVAS, VarAsgnStmt);
+        NODE(NkFieldAsgnStmt, printFAS, FieldAsgnStmt);
         NODE(NkFuncDeclStmt, printFDS, FuncDeclStmt);
+        NODE(NkFuncCallStmt, printFCS, FuncCallStmt);
+        NODE(NkMethodCallStmt, printMCS, MethodCallStmt);
         NODE(NkUsingStmt, printUS, UsingStmt);
         NODE(NkRetStmt, printRS, RetStmt);
         NODE(NkIfElseStmt, printIES, IfElseStmt);
@@ -23,6 +26,8 @@ ASTPrinter::printNode(Node *node) {
         NODE(NkLitExpr, printLE, LiteralExpr);
         NODE(NkUnaryExpr, printUE, UnaryExpr);
         NODE(NkVarExpr, printVE, VarExpr);
+        NODE(NkFieldExpr, printFE, FieldExpr);
+        NODE(NkFuncCallExpr, printFCE, FuncCallExpr);
     }
     #undef NODE
 }
@@ -61,6 +66,24 @@ ASTPrinter::printVAS(VarAsgnStmt *vas) {
 }
 
 void
+ASTPrinter::printFAS(FieldAsgnStmt *fas) {
+    printIndent();
+    _out << "FieldAsgnStmt ";
+    printLineCol(fas->GetStartLoc());
+    _out << ' ' << fas->GetName().Name << "from:\n";
+    _connectionStack.push_back(true);
+    printNode(fas->GetBase());
+    _connectionStack.pop_back();
+    
+    _connectionStack.push_back(true);
+    printNode(fas->GetExpr());
+    _connectionStack.pop_back();
+    if (_connectionStack.empty()) {
+        _out << '\n';
+    }
+}
+
+void
 ASTPrinter::printFDS(FuncDeclStmt *fds) {
     printIndent();
     _out << "FuncDeclStmt ";
@@ -86,6 +109,46 @@ ASTPrinter::printFDS(FuncDeclStmt *fds) {
         _connectionStack.pop_back();
     }
     _out << std::string(fds->GetBody().size() >= 1 + 1, '\n');
+}
+
+void
+ASTPrinter::printFCS(FuncCallStmt *fcs) {
+    printIndent();
+    _out << "FuncCallStmt ";
+    printLineCol(fcs->GetStartLoc());
+    _out << ' ' << fcs->GetFCE()->GetName().Name << '\n';
+    for (int i = 0; i < fcs->GetFCE()->GetArgs().size(); ++i) {
+        _connectionStack.push_back(i != fcs->GetFCE()->GetArgs().size() - 1);
+        auto &a = fcs->GetFCE()->GetArgs()[i];
+        printNode(a);
+        _connectionStack.pop_back();
+    }
+    _out << '\n';
+    if (_connectionStack.empty()) {
+        _out << '\n';
+    }
+}
+
+void
+ASTPrinter::printMCS(MethodCallStmt *mcs) {
+    printIndent();
+    _out << "MethodCallStmt ";
+    printLineCol(mcs->GetStartLoc());
+    _out << ' ' << mcs->GetMCE()->GetName().Name << " from \n";
+    _connectionStack.push_back(true);
+    printNode(mcs->GetMCE()->GetBase());
+    _connectionStack.pop_back();
+    for (int i = 0; i < mcs->GetMCE()->GetArgs().size(); ++i) {
+        _connectionStack.push_back(i != mcs->GetMCE()->GetArgs().size() - 1);
+        auto &a = mcs->GetMCE()->GetArgs()[i];
+        printNode(a);
+        _connectionStack.pop_back();
+    }
+    _out << '\n';
+    
+    if (_connectionStack.empty()) {
+        _out << '\n';
+    }
 }
 
 void
@@ -241,6 +304,38 @@ ASTPrinter::printVE(VarExpr *ve) {
     _out << "VarExpr ";
     printLineCol(ve->GetStartLoc());
     _out << " '" << ve->GetName().Name << "'\n";
+    if (_connectionStack.empty()) {
+        _out << '\n';
+    }
+}
+
+void
+ASTPrinter::printFE(FieldExpr *fe) {
+    printIndent();
+    _out << "FieldExpr ";
+    printLineCol(fe->GetStartLoc());
+    _out << " '" << fe->GetName().Name << "' from\n";
+    _connectionStack.push_back(true);
+    printNode(fe->GetBase());
+    _connectionStack.pop_back();
+    if (_connectionStack.empty()) {
+        _out << '\n';
+    }
+}
+
+void
+ASTPrinter::printFCE(FuncCallExpr *fce) {
+    printIndent();
+    _out << "FuncCallExpr ";
+    printLineCol(fce->GetStartLoc());
+    _out << ' ' << fce->GetName().Name << '\n';
+    for (int i = 0; i < fce->GetArgs().size(); ++i) {
+        _connectionStack.push_back(i != fce->GetArgs().size() - 1);
+        auto &a = fce->GetArgs()[i];
+        printNode(a);
+        _connectionStack.pop_back();
+    }
+    _out << '\n';
     if (_connectionStack.empty()) {
         _out << '\n';
     }

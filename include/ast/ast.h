@@ -1,9 +1,11 @@
 #pragma once
 #include <ast/stmts/fds.h>
 #include <ast/stmts/fcs.h>
+#include <ast/stmts/mcs.h>
 #include <ast/stmts/us.h>
 #include <ast/stmts/vds.h>
 #include <ast/stmts/vas.h>
+#include <ast/stmts/fas.h>
 #include <ast/stmts/rs.h>
 #include <ast/stmts/ies.h>
 #include <ast/stmts/fls.h>

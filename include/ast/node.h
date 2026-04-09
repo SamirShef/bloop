@@ -8,6 +8,7 @@ enum NodeKind : uint8_t {
     NkStartStmts,
     NkVarDeclStmt,
     NkVarAsgnStmt,
+    NkFieldAsgnStmt,
     NkFuncDeclStmt,
     NkFuncCallStmt,
     NkUsingStmt,
@@ -16,6 +17,7 @@ enum NodeKind : uint8_t {
     NkForLoopStmt,
     NkBreakStmt,
     NkContinueStmt,
+    NkMethodCallStmt,
     NkEndStmts,
 
     NkStartExprs,

@@ -7,6 +7,7 @@
 #include <lexer/token.h>
 #include <ast/stmt.h>
 #include <ast/exprs/ve.h>
+#include <ast/exprs/fe.h>
 #include <vector>
 
 namespace bloop {
@@ -46,6 +47,9 @@ private:
 
     Stmt *
     parseVAS(VarExpr *base);
+
+    Stmt *
+    parseFAS(FieldExpr *base);
 
     Stmt *
     parseFDS();

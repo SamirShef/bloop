@@ -29,8 +29,10 @@ Semantic::analyzeStmt(Stmt *stmt) {
     switch (stmt->GetKind()) {
         NODE(NkVarDeclStmt, analyzeVDS, VarDeclStmt);
         NODE(NkVarAsgnStmt, analyzeVAS, VarAsgnStmt);
+        NODE(NkFieldAsgnStmt, analyzeFAS, FieldAsgnStmt);
         NODE(NkFuncDeclStmt, analyzeFuncBody, FuncDeclStmt);
         NODE(NkFuncCallStmt, analyzeFCS, FuncCallStmt);
+        NODE(NkMethodCallStmt, analyzeMCS, MethodCallStmt);
         NODE(NkUsingStmt, analyzeUS, UsingStmt);
         NODE(NkRetStmt, analyzeRS, RetStmt);
         NODE(NkIfElseStmt, analyzeIES, IfElseStmt);
@@ -115,6 +117,39 @@ Semantic::analyzeVAS(VarAsgnStmt *vas) {
     _diag.Report(Error, "variable is undeclared in this scope")
         .SetCode(ErrUndeclaredVar)
         .AddSpan(vas->GetStartLoc(), vas->GetEndLoc(), "undeclared");
+}
+
+void
+Semantic::analyzeFAS(FieldAsgnStmt *fas) {
+    auto baseRes = analyzeExpr(fas->GetBase());
+    if (baseRes.Val.Type->IsModulePtr()) {
+        Module *mod = baseRes.Val.Type->AsModulePtr()->GetMod();
+        if (auto it = mod->Vars.find(fas->GetName().Name); it != mod->Vars.end()) {
+            if (it->second.Access != Pub) {
+                _diag.Report(Error, "symbol '" + fas->GetName().Name + "' is private")
+                    .SetCode(ErrPrivateSymbol)
+                    .AddSpan(fas->GetName().Start, fas->GetName().End, "private symbol")
+                    .AddHelp("consider using the 'pub' keyword to make field '" + fas->GetName().Name + "' accessible")
+                    .AddHelp("consider using a public method or API instead");
+            }
+            if (it->second.IsConst) {
+                _diag.Report(Error, "reassignment of read-only variable '" + it->second.Name.Name + "'")
+                    .SetCode(ErrReasgnConst)
+                    .AddSpan(fas->GetStartLoc(), fas->GetEndLoc());
+            }
+            auto res = analyzeExpr(fas->GetExpr());
+            implicitlyCast(res, &it->second.Type);
+            _builder.CreateStore(it->second.Storage, it->second.Index, res.HirNode);
+            return;
+        }
+        _diag.Report(Error, "symbol '" + fas->GetName().Name + "' is undeclared in module '" + mod->Name + "'")
+            .SetCode(ErrUndeclaredSymbol)
+            .AddSpan(fas->GetName().Start, fas->GetName().End, "undeclared");
+        return;
+    }
+    _diag.Report(Error, "symbol '" + fas->GetName().Name + "' is undeclared")
+        .SetCode(ErrUndeclaredSymbol)
+        .AddSpan(fas->GetName().Start, fas->GetName().End, "undeclared");
 }
 
 void
@@ -386,6 +421,12 @@ Semantic::analyzeFuncBody(FuncDeclStmt *fds) {
 void
 Semantic::analyzeFCS(FuncCallStmt *fcs) {
     auto res = analyzeExpr(fcs->GetFCE());
+    _builder.AddToBlock(res.HirNode);
+}
+
+void
+Semantic::analyzeMCS(MethodCallStmt *mcs) {
+    auto res = analyzeExpr(mcs->GetMCE());
     _builder.AddToBlock(res.HirNode);
 }
 

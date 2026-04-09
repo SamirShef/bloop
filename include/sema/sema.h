@@ -81,6 +81,9 @@ private:
 
     void
     analyzeVAS(VarAsgnStmt *vas);
+
+    void
+    analyzeFAS(FieldAsgnStmt *fas);
     
     void
     analyzeFDS(FuncDeclStmt *fds);
@@ -96,6 +99,9 @@ private:
 
     void
     analyzeFCS(FuncCallStmt *fcs);
+
+    void
+    analyzeMCS(MethodCallStmt *mcs);
 
     void
     analyzeUS(UsingStmt *us);

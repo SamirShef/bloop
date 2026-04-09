@@ -67,9 +67,18 @@ private:
 
     void
     printVAS(VarAsgnStmt *vas);
+
+    void
+    printFAS(FieldAsgnStmt *fas);
     
     void
     printFDS(FuncDeclStmt *fds);
+
+    void
+    printFCS(FuncCallStmt *fcs);
+
+    void
+    printMCS(MethodCallStmt *mcs);
 
     void
     printUS(UsingStmt *us);
@@ -100,6 +109,12 @@ private:
 
     void
     printVE(VarExpr *ve);
+
+    void
+    printFE(FieldExpr *fe);
+
+    void
+    printFCE(FuncCallExpr *fce);
 
     void
     printType(Type *t);

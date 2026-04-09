@@ -88,9 +88,20 @@ Parser::getStmtFromExpr(Expr *expr, bool consumeSemi) {
             EXPECT_SEMI();
             return res;
         }
+        case NkFieldExpr: {
+            Stmt *res = parseFAS(llvm::cast<FieldExpr>(expr));
+            EXPECT_SEMI();
+            return res;
+        }
         case NkFuncCallExpr: {
             FuncCallExpr *fce = llvm::cast<FuncCallExpr>(expr);
             Stmt *res = createNode<FuncCallStmt>(fce);
+            EXPECT_SEMI();
+            return res;
+        }
+        case NkMethodCallExpr: {
+            MethodCallExpr *mce = llvm::cast<MethodCallExpr>(expr);
+            Stmt *res = createNode<MethodCallStmt>(mce);
             EXPECT_SEMI();
             return res;
         }
@@ -138,6 +149,22 @@ Parser::parseVAS(VarExpr *base) {
     }
     NameObj name = base->GetName();
     return createNode<VarAsgnStmt>(name, expr, name.Start, peek().End);
+}
+
+Stmt *
+Parser::parseFAS(FieldExpr *base) {
+    if (!isAssignmentOp(peek().Kind)) {
+        _diag.Report(Error, "expected `=` or `+=` or `-=` or `*=` or `/=` or `%=`")
+            .SetCode(ErrExpectedToken)
+            .AddSpan(peek().Start, peek().End);
+        return nullptr;
+    }
+    const Token op = advance();
+    Expr *expr = parseExpr();
+    if (op.Kind != TkEq && isAssignmentOp(op.Kind)) {
+        expr = createCompoundAssignmentOp(op, base, expr);
+    }
+    return createNode<FieldAsgnStmt>(base->GetBase(), base->GetName(), expr, peek().End);
 }
 
 Stmt *
