@@ -14,6 +14,7 @@ ASTPrinter::printNode(Node *node) {
         NODE(NkFuncDeclStmt, printFDS, FuncDeclStmt);
         NODE(NkUsingStmt, printUS, UsingStmt);
         NODE(NkRetStmt, printRS, RetStmt);
+        NODE(NkIfElseStmt, printIES, IfElseStmt);
         NODE(NkBinaryExpr, printBE, BinaryExpr);
         NODE(NkLitExpr, printLE, LiteralExpr);
         NODE(NkUnaryExpr, printUE, UnaryExpr);
@@ -33,10 +34,10 @@ ASTPrinter::printVDS(VarDeclStmt *vds) {
         _out << " const";
     }
     _out << ' ' << vds->GetName().Name << '\n';
-    ++_indent;
+    _connectionStack.push_back(true);
     printNode(vds->GetExpr());
-    --_indent;
-    if (!_indent) {
+    _connectionStack.pop_back();
+    if (_connectionStack.empty()) {
         _out << '\n';
     }
 }
@@ -61,11 +62,11 @@ ASTPrinter::printFDS(FuncDeclStmt *fds) {
     _out << ") ";
     printType(fds->GetRetType());
     _out << '\n';
-    ++_indent;
-    for (auto &s : fds->GetBody()) {
-        printNode(s);
+    for (int i = 0; i < fds->GetBody().size(); ++i) {
+        _connectionStack.push_back(i != fds->GetBody().size() - 1);
+        printNode(fds->GetBody()[i]);
+        _connectionStack.pop_back();
     }
-    --_indent;
     _out << std::string(fds->GetBody().size() >= 1 + 1, '\n');
 }
 
@@ -75,7 +76,7 @@ ASTPrinter::printUS(UsingStmt *us) {
     _out << "UsingStmt ";
     printLineCol(us->GetStartLoc());
     _out << " '" << us->GetPath().Name << "'\n";
-    if (!_indent) {
+    if (_connectionStack.empty()) {
         _out << '\n';
     }
 }
@@ -87,14 +88,14 @@ ASTPrinter::printRS(RetStmt *rs) {
     printLineCol(rs->GetStartLoc());
     if (rs->GetExpr()) {
         _out << '\n';
-        ++_indent;
+        _connectionStack.push_back(true);
         printNode(rs->GetExpr());
-        --_indent;
+        _connectionStack.pop_back();
     }
     else {
         _out << '\n';
     }
-    if (!_indent) {
+    if (_connectionStack.empty()) {
         _out << '\n';
     }
 }
@@ -105,19 +106,20 @@ ASTPrinter::printIES(IfElseStmt *ies) {
     _out << "IfElseStmt ";
     printLineCol(ies->GetStartLoc());
     _out << '\n';
-    ++_indent;
+    _connectionStack.push_back(true);
     printNode(ies->GetCond());
-    --_indent;
-    ++_indent;
-    for (auto &s : ies->GetThenBranch()) {
-        printNode(s);
+    _connectionStack.pop_back();
+    for (int i = 0; i < ies->GetThenBranch().size(); ++i) {
+        _connectionStack.push_back(i != ies->GetThenBranch().size() - 1);
+        printNode(ies->GetThenBranch()[i]);
+        _connectionStack.pop_back();
     }
-    --_indent;
     if (ies->GetElseBranch().size()) {
-        for (auto &s : ies->GetElseBranch()) {
-            printNode(s);
+        for (int i = 0; i < ies->GetElseBranch().size(); ++i) {
+            _connectionStack.push_back(i != ies->GetElseBranch().size() - 1);
+            printNode(ies->GetElseBranch()[i]);
+            _connectionStack.pop_back();
         }
-        --_indent;
     }
 }
 
@@ -127,10 +129,13 @@ ASTPrinter::printBE(BinaryExpr *be) {
     _out << "BinaryExpr ";
     printLineCol(be->GetStartLoc());
     _out << " '" << be->GetOp().Val << "'\n";
-    ++_indent;
+    _connectionStack.push_back(true);
     printNode(be->GetLHS());
+    _connectionStack.pop_back();
+
+    _connectionStack.push_back(true);
     printNode(be->GetRHS());
-    --_indent;
+    _connectionStack.pop_back();
 }
 
 void
@@ -149,9 +154,9 @@ ASTPrinter::printUE(UnaryExpr *ue) {
     _out << "UnaryExpr ";
     printLineCol(ue->GetStartLoc());
     _out << " '" << ue->GetOp().Val << "'\n";
-    ++_indent;
+    _connectionStack.push_back(true);
     printNode(ue->GetRHS());
-    --_indent;
+    _connectionStack.pop_back();
 }
 
 void
@@ -160,7 +165,7 @@ ASTPrinter::printVE(VarExpr *ve) {
     _out << "VarExpr ";
     printLineCol(ve->GetStartLoc());
     _out << " '" << ve->GetName().Name << "'\n";
-    if (!_indent) {
+    if (_connectionStack.empty()) {
         _out << '\n';
     }
 }

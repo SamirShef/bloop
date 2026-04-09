@@ -42,7 +42,7 @@ COL(Reset, "\e[0m");
 #undef COL
 
 class ASTPrinter {
-    int _indent = 0;
+    std::vector<bool> _connectionStack;
     llvm::SourceMgr &_srcMgr;
     std::ostream &_out;
 
@@ -94,10 +94,20 @@ private:
 
     void
     printIndent() {
-        if (_indent) {
-            _out << std::string((_indent - 1) * 3, ' ');
-            _out << "|_ ";
+        if (_connectionStack.empty()) {
+            return;
         }
+
+        for (int i = 0; i < _connectionStack.size() - 1; ++i) {
+            if (_connectionStack[i]) {
+                _out << "|  ";
+            }
+            else {
+                _out << "   ";
+            }
+        }
+
+        _out << "|_ ";
     }
 
     void
