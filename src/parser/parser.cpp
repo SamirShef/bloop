@@ -7,12 +7,17 @@ static bloop::AccessModifier access;
 
 namespace bloop {
 
+static bool
+isAssignmentOp(TokenKind kind) {
+    return kind >= TkPlusEq && kind <= TkGtGtEq || kind == TkEq;
+}
+
 #define EXPECT_SEMI() \
     if (consumeSemi && !expect(TkSemi)) { \
         _diag.Report(Error, "expected ';'") \
             .SetCode(ErrExpectedSemi) \
             .AddSpan(peek().Start, peek().End) \
-            .AddNote("add ';' to the end of the line"); \
+            .AddHelp("add ';' to the end of the line"); \
     }
 
 Stmt *
@@ -43,6 +48,34 @@ Parser::parseStmt(bool consumeSemi) {
             EXPECT_SEMI();
             return res;
         }
+        case TkIf: {
+            Stmt *res = parseIES();
+            return res;
+        }
+        case TkFor: {
+            Stmt *res = parseFLS();
+            return res;
+        }
+        case TkId: {
+            Expr *expr = parseExpr();
+            return getStmtFromExpr(expr, consumeSemi);
+        }
+    }
+    const Token tok = advance();
+    _diag.Report(Error, "expected statement")
+        .SetCode(ErrExpectedStmt)
+        .AddSpan(tok.Start, tok.End);
+    return nullptr;
+}
+
+Stmt *
+Parser::getStmtFromExpr(Expr *expr, bool consumeSemi) {
+    switch (expr->GetKind()) {
+        case NkVarExpr: {
+            Stmt *res = parseVAS(llvm::cast<VarExpr>(expr));
+            EXPECT_SEMI();
+            return res;
+        }
     }
     const Token tok = advance();
     _diag.Report(Error, "expected statement")
@@ -70,6 +103,23 @@ Parser::parseVDS() {
         expr = parseExpr();
     }
     return createNode<VarDeclStmt>(name, type, expr, firstTok.Kind == TkConst, access, firstTok.Start, peek().End);
+}
+
+Stmt *
+Parser::parseVAS(VarExpr *base) {
+    if (!isAssignmentOp(peek().Kind)) {
+        _diag.Report(Error, "expected `=` or `+=` or `-=` or `*=` or `/=` or `%=`")
+            .SetCode(ErrExpectedToken)
+            .AddSpan(peek().Start, peek().End);
+        return nullptr;
+    }
+    const Token op = advance();
+    Expr *expr = parseExpr();
+    if (op.Kind != TkEq && isAssignmentOp(op.Kind)) {
+        expr = createCompoundAssignmentOp(op, base, expr);
+    }
+    NameObj name = base->GetName();
+    return createNode<VarAsgnStmt>(name, expr, name.Start, peek().End);
 }
 
 Stmt *
@@ -147,6 +197,69 @@ Parser::parseRS() {
         expr = parseExpr();
     }
     return createNode<RetStmt>(expr, firstTok.Start, peek().End);
+}
+
+Stmt *
+Parser::parseIES() {
+    const Token firstTok = advance();
+    Expr *expr = parseExpr();
+    if (!expect(TkLBrace)) {
+        _diag.Report(Error, "expected '{'")
+            .SetCode(ErrExpectedToken)
+            .AddSpan(peek().Start, peek().End);
+    }
+    std::vector<Stmt *> thenBody;
+    std::vector<Stmt *> elseBody;
+    while (!expect(TkRBrace)) {
+        thenBody.push_back(parseStmt());
+    }
+    if (expect(TkElse)) {
+        if (!expect(TkLBrace)) {
+            _diag.Report(Error, "expected '{'")
+                .SetCode(ErrExpectedToken)
+                .AddSpan(peek().Start, peek().End);
+        }
+        while (!expect(TkRBrace)) {
+            elseBody.push_back(parseStmt());
+        }
+    }
+    return createNode<IfElseStmt>(expr, thenBody, elseBody, firstTok.Start, peek(-1).End);
+}
+
+Stmt *
+Parser::parseFLS() {
+    const Token firstTok = advance();
+    Stmt *indexator = nullptr;
+    if (peek().Kind == TkVar || peek().Kind == TkId && isAssignmentOp(peek(1).Kind)) {
+        indexator = parseStmt(false);
+        if (!expect(TkComma)) {
+            _diag.Report(Error, "expected ','")
+                .SetCode(ErrExpectedToken)
+                .AddSpan(peek().Start, peek().End);
+        }
+    }
+    Expr *cond = parseExpr(PrecLowest, false);
+    Stmt *iteration = nullptr;
+    if (peek().Kind != TkLBrace) {
+        if (!expect(TkComma)) {
+            _diag.Report(Error, "expected ','")
+                .SetCode(ErrExpectedToken)
+                .AddSpan(peek().Start, peek().End);
+        }
+        iteration = parseStmt(false);
+    }
+    std::vector<Stmt *> block;
+    if (!expect(TkLBrace)) {
+        _diag.Report(Error, "expected '{'")
+            .SetCode(ErrExpectedToken)
+            .AddSpan(peek().Start, peek().End);
+    }
+    else {
+        while (!expect(TkRBrace)) {
+            block.push_back(parseStmt());
+        }
+    }
+    return createNode<ForLoopStmt>(indexator, cond, iteration, block, Priv, firstTok.Start, peek(-1).End);
 }
 
 Expr *
@@ -256,6 +369,26 @@ Parser::parseChain(Expr *base) {
         }
     }
     return base;
+}
+
+Expr *
+Parser::createCompoundAssignmentOp(Token op, Expr *base, Expr *expr) {
+    switch (op.Kind) {
+        #define OP(k, v) createNode<BinaryExpr>(base, Token(k, v, op.Start, op.End), expr, base->GetStartLoc(), expr->GetEndLoc())
+        case TkPlusEq:
+            return OP(TkPlus, "+");
+        case TkMinusEq:
+            return OP(TkMinus, "-");
+        case TkStarEq:
+            return OP(TkStar, "*");
+        case TkSlashEq:
+            return OP(TkSlash, "/");
+        case TkPercentEq:
+            return OP(TkPercent, "%");
+        default:
+            return nullptr;
+        #undef OP
+    }
 }
 
 void

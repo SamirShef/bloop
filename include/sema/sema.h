@@ -31,10 +31,10 @@ class Semantic {
     };
 
     struct Scope {
-        std::unordered_map<std::string, int> VarsMap;
-        std::vector<Variable> Vars;
+        std::unordered_map<std::string, Variable> Vars;
     };
     std::stack<Scope> _vars;
+    unsigned _currentFuncVarCount = 0;
 
 public:
     explicit Semantic(DiagnosticEngine &d, Module *&m, HIRContext &c, const std::unordered_map<std::string, FileNode> &g)
@@ -45,12 +45,18 @@ public:
     void
     Analyze(std::vector<Stmt *> &ast) {
         for (auto &s : ast) {
+            if (!s) {
+                continue;
+            }
             if (s->GetKind() == NkFuncDeclStmt) {
-                registerFunc(static_cast<FuncDeclStmt *>(s));
+                registerFunc(llvm::cast<FuncDeclStmt>(s));
             }
         }
 
         for (auto &s : ast) {
+            if (!s) {
+                continue;
+            }
             analyzeStmt(s);
         }
     }
@@ -66,6 +72,9 @@ private:
 
     void
     analyzeVDS(VarDeclStmt *vds);
+
+    void
+    analyzeVAS(VarAsgnStmt *vas);
     
     void
     analyzeFDS(FuncDeclStmt *fds);
@@ -84,6 +93,12 @@ private:
 
     void
     analyzeRS(RetStmt *rs);
+
+    void
+    analyzeIES(IfElseStmt *ies);
+
+    void
+    analyzeFLS(ForLoopStmt *fls);
 
     SemanticResult
     analyzeExpr(Expr *expr);

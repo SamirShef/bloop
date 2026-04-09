@@ -39,6 +39,7 @@ enum ErrorCode : uint8_t {
     ErrInvalidMainFuncSig,
     ErrPrivateSymbol,
     ErrUndeclaredSymbol,
+    ErrReasgnConst,
 };
 
 enum WarnCode : uint8_t {

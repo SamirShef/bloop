@@ -6,7 +6,7 @@
 #include <diag/engine.h>
 #include <lexer/token.h>
 #include <ast/stmt.h>
-#include <ast/expr.h>
+#include <ast/exprs/ve.h>
 #include <vector>
 
 namespace bloop {
@@ -39,7 +39,13 @@ private:
     parseStmt(bool consumeSemi = true);
 
     Stmt *
+    getStmtFromExpr(Expr *expr, bool consumeSemi);
+
+    Stmt *
     parseVDS();
+
+    Stmt *
+    parseVAS(VarExpr *base);
 
     Stmt *
     parseFDS();
@@ -49,6 +55,12 @@ private:
 
     Stmt *
     parseRS();
+
+    Stmt *
+    parseIES();
+
+    Stmt *
+    parseFLS();
     
     Expr *
     parsePrefixExpr(bool allowStruct = true);
@@ -58,6 +70,9 @@ private:
 
     Expr *
     parseChain(Expr *base);
+
+    Expr *
+    createCompoundAssignmentOp(Token op, Expr *base, Expr *expr);
 
     void
     parseArgsInto(std::vector<Expr *> &args);

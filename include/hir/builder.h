@@ -67,6 +67,11 @@ public:
         return bb;
     }
 
+    HIRFuncDeclStmt *
+    GetParent() const {
+        return _insertBlock->GetParent();
+    }
+
     void
     SetInsertPoint(HIRBasicBlock* bb) {
         _insertBlock = bb;
@@ -107,6 +112,20 @@ public:
         return _ctx.CreateNode<HIRCastNode>(kind, expr, from, to);
     }
 
+    HIRBranch *
+    CreateBr(HIRBasicBlock *thenBlock) {
+        auto *node = _ctx.CreateNode<HIRBranch>(thenBlock);
+        AddToBlock(node);
+        return node;
+    }
+
+    HIRBranch *
+    CreateBr(HIRNode *cond, HIRBasicBlock *thenBlock, HIRBasicBlock *elseBlock) {
+        auto *node = _ctx.CreateNode<HIRBranch>(cond, thenBlock, elseBlock);
+        AddToBlock(node);
+        return node;
+    }
+
     HIRLiteralExpr *
     CreateLiteral(Value val) {
         return _ctx.CreateNode<HIRLiteralExpr>(val);
@@ -123,8 +142,15 @@ public:
     }
 
     HIRVarExpr *
-    CreateLoadVar(StorageKind kind, uint index, Module *parent = nullptr) {
+    CreateLoadVar(StorageKind kind, int index, Module *parent = nullptr) {
         return _ctx.CreateNode<HIRVarExpr>(kind, index, parent);
+    }
+
+    HIRVarStore *
+    CreateStore(StorageKind kind, int index, HIRNode *expr) {
+        auto *node = _ctx.CreateNode<HIRVarStore>(kind, index, expr);
+        AddToBlock(node);
+        return node;
     }
 
     HIRFuncCallExpr *

@@ -11,6 +11,11 @@ class UnaryExpr : public Expr {
 public:
     explicit UnaryExpr(const Token o, Expr *r, llvm::SMLoc s, llvm::SMLoc e) : _op(o), _rhs(r), Expr(NkUnaryExpr, s, e) {}
 
+    constexpr static bool
+    classof(const Node *node) {
+        return node->GetKind() == NkUnaryExpr;
+    }
+
     const Token
     GetOp() const {
         return _op;
