@@ -8,13 +8,15 @@ ASTPrinter::printNode(Node *node) {
         return;
     }
 
-    #define NODE(k, f, t) case k: return f(static_cast<t *>(node));
+    #define NODE(k, f, t) case k: return f(llvm::cast<t>(node));
     switch (node->GetKind()) {
         NODE(NkVarDeclStmt, printVDS, VarDeclStmt);
+        NODE(NkVarAsgnStmt, printVAS, VarAsgnStmt);
         NODE(NkFuncDeclStmt, printFDS, FuncDeclStmt);
         NODE(NkUsingStmt, printUS, UsingStmt);
         NODE(NkRetStmt, printRS, RetStmt);
         NODE(NkIfElseStmt, printIES, IfElseStmt);
+        NODE(NkForLoopStmt, printFLS, ForLoopStmt);
         NODE(NkBinaryExpr, printBE, BinaryExpr);
         NODE(NkLitExpr, printLE, LiteralExpr);
         NODE(NkUnaryExpr, printUE, UnaryExpr);
@@ -44,7 +46,16 @@ ASTPrinter::printVDS(VarDeclStmt *vds) {
 
 void
 ASTPrinter::printVAS(VarAsgnStmt *vas) {
-    // TODO: implement
+    printIndent();
+    _out << "VarAsgnStmt ";
+    printLineCol(vas->GetStartLoc());
+    _out << ' ' << vas->GetName().Name << '\n';
+    _connectionStack.push_back(true);
+    printNode(vas->GetExpr());
+    _connectionStack.pop_back();
+    if (_connectionStack.empty()) {
+        _out << '\n';
+    }
 }
 
 void
@@ -130,7 +141,32 @@ ASTPrinter::printIES(IfElseStmt *ies) {
 
 void
 ASTPrinter::printFLS(ForLoopStmt *fls) {
-    // TODO: implement
+    printIndent();
+    _out << "ForLoopStmt ";
+    printLineCol(fls->GetStartLoc());
+    _out << '\n';
+
+    if (fls->GetIndexator()) {
+        _connectionStack.push_back(true);
+        printNode(fls->GetIndexator());
+        _connectionStack.pop_back();
+    }
+    
+    _connectionStack.push_back(true);
+    printNode(fls->GetCond());
+    _connectionStack.pop_back();
+
+    if (fls->GetIteration()) {
+        _connectionStack.push_back(true);
+        printNode(fls->GetIteration());
+        _connectionStack.pop_back();
+    }
+    
+    for (int i = 0; i < fls->GetBody().size(); ++i) {
+        _connectionStack.push_back(i != fls->GetBody().size() - 1);
+        printNode(fls->GetBody()[i]);
+        _connectionStack.pop_back();
+    }
 }
 
 void

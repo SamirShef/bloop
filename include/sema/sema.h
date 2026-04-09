@@ -31,10 +31,10 @@ class Semantic {
     };
 
     struct Scope {
-        std::unordered_map<std::string, int> VarsMap;
-        std::vector<Variable> Vars;
+        std::unordered_map<std::string, Variable> Vars;
     };
     std::stack<Scope> _vars;
+    unsigned _currentFuncVarCount = 0;
 
 public:
     explicit Semantic(DiagnosticEngine &d, Module *&m, HIRContext &c, const std::unordered_map<std::string, FileNode> &g)
@@ -96,6 +96,9 @@ private:
 
     void
     analyzeIES(IfElseStmt *ies);
+
+    void
+    analyzeFLS(ForLoopStmt *fls);
 
     SemanticResult
     analyzeExpr(Expr *expr);

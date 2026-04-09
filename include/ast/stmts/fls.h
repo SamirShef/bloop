@@ -26,7 +26,7 @@ public:
     }
     
     Expr *
-    GetCondition() const {
+    GetCond() const {
         return _cond;
     }
 

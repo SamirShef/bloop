@@ -33,6 +33,7 @@ Semantic::analyzeStmt(Stmt *stmt) {
         NODE(NkUsingStmt, analyzeUS, UsingStmt);
         NODE(NkRetStmt, analyzeRS, RetStmt);
         NODE(NkIfElseStmt, analyzeIES, IfElseStmt);
+        NODE(NkForLoopStmt, analyzeFLS, ForLoopStmt);
         default: {
             _diag.Report(Error, "compiler limitation: statement type is currently unimplemented")
                 .SetCode(ErrUnimplementedStmt)
@@ -73,15 +74,15 @@ Semantic::analyzeVDS(VarDeclStmt *vds) {
     }
 
     auto &top = _vars.top();
-    if (auto it = top.VarsMap.find(vds->GetName().Name); it != top.VarsMap.end()) {
+    if (auto it = top.Vars.find(vds->GetName().Name); it != top.Vars.end()) {
         _diag.Report(Error, "redefinition of '" + vds->GetName().Name + "'")
             .SetCode(ErrRedefinition)
-            .AddSpan(top.Vars[it->second].Name.Start, top.Vars[it->second].Name.End, "previous definition is here")
+            .AddSpan(it->second.Name.Start, it->second.Name.End, "previous definition is here")
             .AddSpan(vds->GetName().Start, vds->GetName().End, "redefinition here");
         return;
     }
 
-    Variable var(vds->GetName(), vds->GetType(), vds->IsConst(), vds->GetAccess(), val, _vars.size() == 1 ? Static : Stack, top.Vars.size());
+    Variable var(vds->GetName(), vds->GetType(), vds->IsConst(), vds->GetAccess(), val, _vars.size() == 1 ? Static : Stack, _currentFuncVarCount++);
     if (_vars.size() == 1) {
         _mod->Vars.emplace(vds->GetName().Name, var);
     }
@@ -95,15 +96,15 @@ Semantic::analyzeVAS(VarAsgnStmt *vas) {
     auto varsCopy = _vars;
     while (!varsCopy.empty()) {
         auto &top = varsCopy.top();
-        if (auto it = top.VarsMap.find(vas->GetName().Name); it != top.VarsMap.end()) {
-            if (top.Vars[it->second].IsConst) {
-                _diag.Report(Error, "reassignment of read-only variable '" + top.Vars[it->second].Name.Name + "'")
+        if (auto it = top.Vars.find(vas->GetName().Name); it != top.Vars.end()) {
+            if (it->second.IsConst) {
+                _diag.Report(Error, "reassignment of read-only variable '" + it->second.Name.Name + "'")
                     .SetCode(ErrReasgnConst)
                     .AddSpan(vas->GetStartLoc(), vas->GetEndLoc());
             }
             auto res = analyzeExpr(vas->GetExpr());
-            implicitlyCast(res, &top.Vars[it->second].Type);
-            _builder.CreateStore(top.Vars[it->second].Storage, top.Vars[it->second].Index, res.HirNode);
+            implicitlyCast(res, &it->second.Type);
+            _builder.CreateStore(it->second.Storage, it->second.Index, res.HirNode);
             return;
         }
         varsCopy.pop();
@@ -320,12 +321,14 @@ Semantic::analyzeFuncBody(FuncDeclStmt *fds) {
 
     resolveFuncSignature(func);
 
+    unsigned oldVarCount = _currentFuncVarCount;
+    _currentFuncVarCount = 0;
     _funcsRetTypes.push(func->RetType);
     _vars.push({});
 
     for (int i = 0; i < func->Args.size(); ++i) {
         auto &a = func->Args[i];
-        createVar(a.Name.Name, Variable(a.Name, a.Type, false, Priv, Value::GetIncorrectValue(), Parameter, i));
+        createVar(a.Name.Name, Variable(a.Name, a.Type, false, Priv, Value::GetIncorrectValue(), Parameter, _currentFuncVarCount++));
     }
 
     auto *entry = _builder.CreateBlock(func->HirNode, "entry");
@@ -340,6 +343,7 @@ Semantic::analyzeFuncBody(FuncDeclStmt *fds) {
     }
 
     _vars.pop();
+    _currentFuncVarCount = oldVarCount;
     func->RetType = fds->GetRetType();
     func->HirNode->GetRetType() = fds->GetRetType();
 
@@ -469,9 +473,49 @@ Semantic::analyzeIES(IfElseStmt *ies) {
     _builder.SetInsertPoint(mergeBody);
 }
 
+void
+Semantic::analyzeFLS(ForLoopStmt *fls) {
+    _vars.push({});
+
+    auto indexator = _builder.CreateBlock(_builder.GetParent(), "for.indexator");
+    auto cond = _builder.CreateBlock(_builder.GetParent(), "for.cond");
+    auto iteration = _builder.CreateBlock(_builder.GetParent(), "for.iteration");
+    auto body = _builder.CreateBlock(_builder.GetParent(), "for.body");
+    auto exit = _builder.CreateBlock(_builder.GetParent(), "for.exit");
+    _builder.CreateBr(indexator);
+    
+    _builder.SetInsertPoint(indexator);
+    if (fls->GetIndexator()) {
+        analyzeStmt(fls->GetIndexator());
+    }
+    _builder.CreateBr(cond);
+
+    _builder.SetInsertPoint(cond);
+    auto condRes = analyzeExpr(fls->GetCond());
+    Type *boolType = new IntegerType(1, false, condRes.Val.Start, condRes.Val.End);
+    implicitlyCast(condRes, &boolType);
+    _builder.CreateBr(condRes.HirNode, iteration, exit);
+
+    _builder.SetInsertPoint(iteration);
+    if (fls->GetIteration()) {
+        analyzeStmt(fls->GetIteration());
+    }
+    _builder.CreateBr(body);
+
+    _builder.SetInsertPoint(body);
+    for (auto &s : fls->GetBody()) {
+        analyzeStmt(s);
+    }
+    _builder.CreateBr(cond);
+    
+    _vars.pop();
+
+    _builder.SetInsertPoint(exit);
+}
+
 Semantic::SemanticResult
 Semantic::analyzeExpr(Expr *expr) {
-    #define NODE(k, f, t) case k: return f(static_cast<t *>(expr));
+    #define NODE(k, f, t) case k: return f(llvm::cast<t>(expr));
     switch (expr->GetKind()) {
         NODE(NkBinaryExpr, analyzeBE, BinaryExpr);
         NODE(NkLitExpr, analyzeLE, LiteralExpr);
@@ -642,12 +686,12 @@ Semantic::analyzeVE(VarExpr *ve) {
     auto varsCopy = _vars;
     while (!varsCopy.empty()) {
         auto &top = varsCopy.top();
-        if (auto it = top.VarsMap.find(ve->GetName().Name); it != top.VarsMap.end()) {
-            if (top.Vars[it->second].IsConst) {
-                return { top.Vars[it->second].Val, _builder.CreateLiteral(top.Vars[it->second].Val) };
+        if (auto it = top.Vars.find(ve->GetName().Name); it != top.Vars.end()) {
+            if (it->second.IsConst) {
+                return { it->second.Val, _builder.CreateLiteral(it->second.Val) };
             }
-            HIRNode *veNode = _builder.CreateLoadVar(top.Vars[it->second].Storage, top.Vars[it->second].Index);
-            return { Value(Value::Unknown, ValueData(), top.Vars[it->second].Type, ve->GetStartLoc(), ve->GetEndLoc()), veNode };
+            HIRNode *veNode = _builder.CreateLoadVar(it->second.Storage, it->second.Index);
+            return { Value(Value::Unknown, ValueData(), it->second.Type, ve->GetStartLoc(), ve->GetEndLoc()), veNode };
         }
         varsCopy.pop();
     }
@@ -782,9 +826,8 @@ Semantic::analyzeMCE(MethodCallExpr *mce) {
 
 void
 Semantic::createVar(std::string name, Variable var) {
-    var.Index = var.Index == -1 ? _vars.top().Vars.size() : var.Index;
-    _vars.top().Vars.push_back(var);
-    _vars.top().VarsMap.emplace(name, var.Index);
+    var.Index = var.Index == -1 ? _currentFuncVarCount++ : var.Index;
+    _vars.top().Vars.emplace(name, var);
 }
 
 Type *
