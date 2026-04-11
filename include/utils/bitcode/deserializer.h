@@ -8,7 +8,7 @@ namespace bloop {
 
 class Deserializer {
     std::vector<std::string> _strPool;
-    std::vector<Type*> _parsedTypes;
+    std::vector<Type *> _parsedTypes;
 
 public:
     bool
@@ -205,6 +205,9 @@ private:
                 case TypeIdInteger:
                     _parsedTypes.push_back(new IntegerType(record[0], record[1], emptyLoc, emptyLoc));
                     break;
+                case TypeIdFloating:
+                    _parsedTypes.push_back(new FloatingType(static_cast<FloatingType::FloatingKind>(record[0]), emptyLoc, emptyLoc));
+                    break;
                 case TypeIdPointer:
                     _parsedTypes.push_back(new PointerType(_parsedTypes[record[0]], emptyLoc, emptyLoc));
                     break;
@@ -213,6 +216,9 @@ private:
                     break;
                 case TypeIdTrait:
                     _parsedTypes.push_back(new TraitType(NameObj(_strPool[record[0]], emptyLoc, emptyLoc), nullptr, emptyLoc, emptyLoc));
+                    break;
+                case TypeIdNoth:
+                    _parsedTypes.push_back(new NothType(emptyLoc, emptyLoc));
                     break;
             }
         }

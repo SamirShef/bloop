@@ -1,4 +1,5 @@
 #include <utils/types/types.h>
+#include <utils/splitString.h>
 #include <sema/sema.h>
 #include <cmath>
 
@@ -41,7 +42,7 @@ Semantic::analyzeStmt(Stmt *stmt) {
         NODE(NkContinueStmt, analyzeCS, ContinueStmt);
         default: {
             _diag.Report(Error, "compiler limitation: statement type is currently unimplemented")
-                .SetCode(ErrUnimplementedStmt)
+                .SetCode(ErrLimitation)
                 .AddSpan(stmt->GetStartLoc(), stmt->GetEndLoc());
         }
     }
@@ -432,35 +433,97 @@ Semantic::analyzeMCS(MethodCallStmt *mcs) {
 
 void
 Semantic::analyzeUS(UsingStmt *us) {
-    std::string modName = us->GetPath().Name;
-    
-    if (_mod->Imports.count(modName)) {
+    auto chain = us->GetPath();
+    if (chain.empty()) {
+        // TODO: create error
+        return;
+    }
+
+    FileNode *node = nullptr;
+    std::string matchPrefix = "";
+    size_t matchIdx = 0;
+
+    for (int i = chain.size(); i > 0; --i) {
+        std::string currentPrefix = chain[0].Name;
+        for (int j = 1; j < i; ++j) {
+            currentPrefix += "." + chain[j].Name;
+        }
+
+        if (_graph.count(currentPrefix)) {
+            node = const_cast<FileNode *>(&_graph.at(currentPrefix));
+            matchPrefix = currentPrefix;
+            matchIdx = i;
+            break;
+        }
+    }
+
+    if (matchIdx == 0 || !node) {
+        _diag.Report(Error, "module or package not found: '" + chain[0].Name + "'")
+            .SetCode(ErrModNotFound)
+            .AddSpan(chain[0].Start, chain.back().End);
         return; 
     }
 
-    auto it = _graph.find(modName);
-    if (it == _graph.end()) {
-        _diag.Report(Error, "module '" + modName + "' not found in project graph")
-            .SetCode(ErrModNotFound)
-            .AddSpan(us->GetStartLoc(), us->GetEndLoc());
-        return;
+    Module *rootMod = nullptr;
+    Module *parentMod = nullptr;
+
+    for (size_t i = 0; i < matchIdx; ++i) {
+        const std::string &segmentName = chain[i].Name;
+        Module *currentSegmentMod = nullptr;
+
+        if (i == 0) {
+            if (_mod->Imports.count(segmentName)) {
+                currentSegmentMod = _mod->Imports[segmentName];
+            }
+        }
+        else if (parentMod && parentMod->Submods.count(segmentName)) {
+            currentSegmentMod = parentMod->Submods[segmentName];
+        }
+
+        if (!currentSegmentMod) {
+            if (i == matchIdx - 1) {
+                currentSegmentMod = node->Mod;
+            }
+            else {
+                currentSegmentMod = new Module(segmentName, Pub, parentMod);
+            }
+
+            if (i == 0) {
+                _mod->Imports[segmentName] = currentSegmentMod;
+            }
+            else if (parentMod) {
+                parentMod->Submods[segmentName] = currentSegmentMod;
+            }
+        }
+
+        if (i == 0) {
+            rootMod = currentSegmentMod;
+        }
+
+        parentMod = currentSegmentMod;
     }
 
-    const FileNode &node = it->second;
-
-    if (!node.Mod) {
-        _diag.Report(Error, "module '" + modName + "' is not loaded or has errors")
-            .SetCode(ErrModNotLoaded)
-            .AddSpan(us->GetStartLoc(), us->GetEndLoc());
-        return;
+    for (size_t i = matchIdx; i < chain.size(); ++i) {
+        const std::string &symName = chain[i].Name;
+        
+        if (parentMod->Submods.count(symName)) {
+            parentMod = parentMod->Submods[symName];
+        }
+        else {
+            _diag.Report(Error, "compiler limitation: selective symbol import is currently unimplemented")
+                .SetCode(ErrLimitation)
+                .AddSpan(chain[i].Start, chain[i].End)
+                .AddNote("currently supports only full module imports.")
+                .AddHelp("consider using the full module path: 'using " + parentMod->ToString() + ";' and accessing '" + symName + "' via '" + parentMod->ToString() + "." + symName + "'");
+            break;
+        }
     }
 
-    _mod->Imports[modName] = node.Mod;
-
-    for (auto &[name, obj] : node.Mod->Vars) {
-        _builder.CreateVar(node.Mod->ToString() + "." + name, obj.Type, nullptr, Extern);
+    _mod->Imports[rootMod->Name] = rootMod;
+    for (auto &[name, obj] : node->Mod->Vars) {
+        _builder.CreateVar(node->Mod->ToString() + "." + name, obj.Type, nullptr, Extern);
     }
-    for (auto &[name, candidates] : node.Mod->FuncOverloads) {
+    for (auto &[name, candidates] : node->Mod->FuncOverloads) {
         for (auto &c : candidates.Candidates) {
             std::vector<HIRFuncArgument> hirArgs;
             for (int i = 0; i < c.Args.size(); ++i) {
@@ -602,7 +665,7 @@ Semantic::analyzeExpr(Expr *expr) {
         NODE(NkMethodCallExpr, analyzeMCE, MethodCallExpr);
         default: {
             _diag.Report(Error, "compiler limitation: expression type is currently unimplemented")
-                .SetCode(ErrUnimplementedExpr)
+                .SetCode(ErrLimitation)
                 .AddSpan(expr->GetStartLoc(), expr->GetEndLoc());
             return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
         }
@@ -839,6 +902,18 @@ Semantic::analyzeFE(FieldExpr *fe) {
             }
             HIRNode *veNode = _builder.CreateLoadVar(it->second.Storage, it->second.Index, mod);
             return { Value(Value::Unknown, ValueData(), it->second.Type, fe->GetStartLoc(), fe->GetEndLoc()), veNode };
+        }
+        if (auto it = mod->Submods.find(fe->GetName().Name); it != mod->Submods.end()) {
+            if (it->second->Access != Pub) {
+                _diag.Report(Error, "symbol '" + fe->GetName().Name + "' is private")
+                    .SetCode(ErrPrivateSymbol)
+                    .AddSpan(fe->GetName().Start, fe->GetName().End, "private symbol")
+                    .AddHelp("consider using the 'pub' keyword to make field '" + fe->GetName().Name + "' accessible")
+                    .AddHelp("consider using a public method or API instead");
+                return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+            }
+            return { Value(Value::Unknown, ValueData(), new ModuleType(it->second, fe->GetName().Start, fe->GetName().End),
+                     fe->GetName().Start, fe->GetName().End), nullptr };
         }
         _diag.Report(Error, "symbol '" + fe->GetName().Name + "' is undeclared in module '" + mod->Name + "'")
             .SetCode(ErrUndeclaredSymbol)

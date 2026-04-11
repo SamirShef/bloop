@@ -14,14 +14,14 @@ enum VisitState : uint8_t {
 };
 
 struct FileNode {
-    std::string ImportName;
-    fs::path    PhysicalPath;
-    fs::path    ProjectRootPath;
-    bloop::VisitState  State = Unvisited;
+    std::string                 ImportName;
+    fs::path                    PhysicalPath;
+    fs::path                    ProjectRootPath;
+    bloop::VisitState           State = Unvisited;
     
-    std::vector<std::string> Dependencies;
+    std::vector<std::string>    Dependencies;
     
-    Module *Mod = nullptr; 
+    Module                     *Mod = nullptr; 
 };
 
 }
