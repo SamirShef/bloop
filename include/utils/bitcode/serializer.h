@@ -26,6 +26,7 @@ enum TypeRecordIDs {
     TypeIdStruct,
     TypeIdTrait,
     TypeIdArray,
+    TypeIdNoth,
 };
 
 enum RecordIDs {
@@ -222,6 +223,9 @@ private:
                     }
                     w.EmitRecord(TypeIdTuple, record);
                     break;
+                }
+                case Type::Noth: {
+                    w.EmitRecord(TypeIdNoth, record);
                 }
             }
         }

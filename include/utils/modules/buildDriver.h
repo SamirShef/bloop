@@ -6,6 +6,7 @@
 #include <utils/bitcode/deserializer.h>
 #include <utils/compiler.h>
 #include <utils/modules/fileNode.h>
+#include <utils/splitString.h>
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -32,6 +33,12 @@ class BuildDriver {
 
     using Clock = std::chrono::high_resolution_clock;
     using TimePoint = std::chrono::time_point<Clock>;
+
+    struct ResolveResult {
+        std::string BaseModuleName;
+        fs::path MainFilePath;
+        fs::path ProjectRoot;
+    };
 
 public:
     BuildDriver(fs::path p, fs::path v, fs::path s, fs::path r) 
@@ -70,19 +77,21 @@ public:
         std::stringstream ss;
         ss << file.rdbuf();
         Lexer lex;
-        std::vector<std::string> deps = lex.PeekDependencies(ss.str());
+        std::vector<std::string> rawDeps = lex.PeekDependencies(ss.str());
 
         FileNode mainNode {
             .ImportName = manif.PackageName,
             .PhysicalPath = manif.MainFilePath,
             .ProjectRootPath = manif.Path.parent_path(),
-            .Dependencies = deps
+            .Dependencies = {}
         };
         _graph[manif.PackageName] = mainNode;
 
         auto startScan = Clock::now();
         std::cout << "[1/4] Scanning dependencies...\n";
-        for (const auto &d : deps) {
+        for (const auto &d : rawDeps) {
+            ResolveResult res = resolvePath(d);
+            _graph[manif.PackageName].Dependencies.push_back(res.BaseModuleName);
             scan(d);
         }
 
@@ -221,48 +230,64 @@ private:
         return ParseToml(packageName, tomlPath);
     }
 
-    std::pair<fs::path, fs::path> // path to main file and path to root of project
+    ResolveResult
     resolvePath(const std::string &importName) {
-        std::string pathStr = importName;
-        std::replace(pathStr.begin(), pathStr.end(), '.', '/');
-        fs::path relPath(pathStr);
-        relPath.replace_extension(".bl");
+        std::vector<std::string> segments = splitString(importName, '.');
 
-        fs::path localPath = _curFilePath.parent_path() / relPath;
-        if (fs::exists(localPath)) {
-            return { localPath, _projectRoot };
-        }
-        else {
-            localPath.replace_extension("");
-            localPath = localPath / "main.bl";
-            if (fs::exists(localPath)) {
-                return { localPath, _projectRoot };
+        for (int i = segments.size(); i > 0; --i) {
+            std::string currentModName = segments[0];
+            for (int j = 1; j < i; ++j) {
+                currentModName += "." + segments[j];
+            }
+
+            std::string relPathStr = segments[0];
+            for (int j = 1; j < i; ++j) {
+                relPathStr += "/" + segments[j];
+            }
+            fs::path relPath(relPathStr);
+
+            fs::path localPathFile = _curFilePath.parent_path() / (relPathStr + ".bl");
+            fs::path localPathMain = _curFilePath.parent_path() / relPath / "main.bl";
+
+            if (fs::exists(localPathFile)) {
+                return { currentModName, localPathFile, _projectRoot };
+            }
+            if (fs::exists(localPathMain)) {
+                return { currentModName, localPathMain, _projectRoot };
+            }
+
+            std::string packageName = segments[0];
+            fs::path registryEntry = _registryPath / (packageName + ".json");
+            
+            if (fs::exists(registryEntry)) {
+                std::ifstream file(registryEntry);
+                json data = json::parse(file);
+                fs::path tomlPath = data["manifest_path"].get<std::string>();
+                Manifest m = ParseToml(packageName, tomlPath);
+
+                if (i == 1) {
+                    return { currentModName, m.MainFilePath, m.Path.parent_path() };
+                }
+                else {
+                    std::string subPathStr = segments[1];
+                    for (int j = 2; j < i; ++j) {
+                        subPathStr += "/" + segments[j];
+                    }
+                    fs::path targetPathFile = m.MainFilePath.parent_path() / (subPathStr + ".bl");
+                    fs::path targetPathMain = m.MainFilePath.parent_path() / subPathStr / "main.bl";
+
+                    if (fs::exists(targetPathFile)) {
+                        return { currentModName, targetPathFile, m.Path.parent_path() };
+                    }
+                    if (fs::exists(targetPathMain)) {
+                        return { currentModName, targetPathMain, m.Path.parent_path() };
+                    }
+                }
             }
         }
 
-        return resolveImportToPath(importName);
-    }
-
-    std::pair<fs::path, fs::path> // path to main file and path to root of project
-    resolveImportToPath(const std::string &fullImport) {
-        size_t dotPos = fullImport.find('.');
-        std::string packageName = (dotPos == std::string::npos) ? fullImport : fullImport.substr(0, dotPos);
-        Manifest m = resolveManifest(packageName);
-        
-        if (dotPos == std::string::npos) {
-            return { m.MainFilePath, m.Path.parent_path() };
-        }
-
-        std::string subPath = fullImport.substr(dotPos + 1);
-        std::replace(subPath.begin(), subPath.end(), '.', '/');
-        fs::path targetPath = m.Path.parent_path() / (subPath + ".bl");
-        
-        if (!fs::exists(targetPath)) {
-            llvm::errs() << llvm::errs().RED << "Module not found: " << targetPath << '\n' << llvm::errs().RESET;
-            exit(1);
-        }
-
-        return { targetPath, m.Path.parent_path() };
+        llvm::errs() << llvm::errs().RED << "Module or file not found for import: " << importName << '\n' << llvm::errs().RESET;
+        exit(1);
     }
 
     bool
@@ -274,36 +299,43 @@ private:
     }
 
     void
-    scan(const std::string &modName) {
-        if (_graph.count(modName)) {
+    scan(const std::string &rawDep) {
+        ResolveResult res = resolvePath(rawDep);
+
+        if (_graph.count(res.BaseModuleName)) {
             return;
         }
 
-        auto fullPath = resolvePath(modName);
-        
-        std::ifstream file(fullPath.first);
+        std::ifstream file(res.MainFilePath);
         if (!file.is_open()) {
-            llvm::errs() << llvm::errs().RED << "Failed to open module file: " << fullPath.first << '\n' << llvm::errs().RESET;
+            llvm::errs() << llvm::errs().RED << "Failed to open module file: " << res.MainFilePath << '\n' << llvm::errs().RESET;
             exit(1);
         }
         std::stringstream ss;
         ss << file.rdbuf();
         Lexer lex;
         
+        std::vector<std::string> childRawDeps = lex.PeekDependencies(ss.str());
+        
         FileNode node { 
-            .ImportName = modName, 
-            .PhysicalPath = fullPath.first, 
-            .ProjectRootPath = fullPath.second, 
-            .Dependencies = lex.PeekDependencies(ss.str()) 
+            .ImportName = res.BaseModuleName, 
+            .PhysicalPath = res.MainFilePath, 
+            .ProjectRootPath = res.ProjectRoot, 
+            .Dependencies = {}
         };
         
-        _graph[modName] = node;
-        fs::path curFilePath = _curFilePath;
-        _curFilePath = node.PhysicalPath;
-        for (const auto &dep : node.Dependencies) {
+        _graph[res.BaseModuleName] = node;
+        
+        fs::path prevFilePath = _curFilePath;
+        _curFilePath = res.MainFilePath;
+        
+        for (const auto &dep : childRawDeps) {
+            ResolveResult childRes = resolvePath(dep);
+            _graph[res.BaseModuleName].Dependencies.push_back(childRes.BaseModuleName);
             scan(dep);
         }
-        _curFilePath = curFilePath;
+        
+        _curFilePath = prevFilePath;
     }
 
     void

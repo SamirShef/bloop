@@ -218,10 +218,13 @@ Parser::parseFDS() {
 Stmt *
 Parser::parseUS() {
     const Token firstTok = advance();
-    NameObj path("", peek().Start, peek().End);
+    std::vector<NameObj> path;
     while (peek().Kind != TkSemi) {
         if (peek().Kind == TkId || peek().Kind == TkDot) {
-            path.Name += advance().Val;
+            const Token tok = advance();
+            if (tok.Kind != TkDot) {
+                path.push_back(tok);
+            }
         }
         else {
             _diag.Report(Error, "expected identifier of '.'")
@@ -230,7 +233,6 @@ Parser::parseUS() {
             break;
         }
     }
-    path.End = peek(-1).End;
     return createNode<UsingStmt>(path, firstTok.Start, peek().End);
 }
 
@@ -259,12 +261,12 @@ Parser::parseIES() {
         thenBody.push_back(parseStmt());
     }
     if (expect(TkElse)) {
-        if (!expect(TkLBrace)) {
-            _diag.Report(Error, "expected '{'")
-                .SetCode(ErrExpectedToken)
-                .AddSpan(peek().Start, peek().End);
+        if (expect(TkLBrace)) {
+            while (!expect(TkRBrace)) {
+                elseBody.push_back(parseStmt());
+            }
         }
-        while (!expect(TkRBrace)) {
+        else {
             elseBody.push_back(parseStmt());
         }
     }

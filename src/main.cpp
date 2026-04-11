@@ -103,7 +103,7 @@ initProj(const std::string &name) {
     fs::create_directories(srcPath.parent_path());
     std::ofstream mainFile(srcPath);
     if (mainFile.is_open()) {
-        mainFile << "func main() {\n";
+        mainFile << "func main(): i32 {\n";
         mainFile << "   return 0;\n";
         mainFile << "}";
         mainFile.close();

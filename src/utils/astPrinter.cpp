@@ -156,7 +156,14 @@ ASTPrinter::printUS(UsingStmt *us) {
     printIndent();
     _out << "UsingStmt ";
     printLineCol(us->GetStartLoc());
-    _out << " '" << us->GetPath().Name << "'\n";
+    _out << " '";
+    for (int i = 0; i < us->GetPath().size(); ++i) {
+        _out << us->GetPath()[i].Name;
+        if (i < us->GetPath().size() - 1) {
+            _out << '.';
+        }
+    }
+    _out << "'\n";
     if (_connectionStack.empty()) {
         _out << '\n';
     }
