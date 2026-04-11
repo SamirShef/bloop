@@ -72,6 +72,10 @@ Parser::parseStmt(bool consumeSemi) {
             Expr *expr = parseExpr();
             return getStmtFromExpr(expr, consumeSemi);
         }
+        case TkStruct: {
+            Stmt *res = parseSDS();
+            return res;
+        }
     }
     const Token tok = advance();
     _diag.Report(Error, "expected statement")
@@ -309,6 +313,59 @@ Parser::parseFLS() {
     return createNode<ForLoopStmt>(indexator, cond, iteration, block, Priv, firstTok.Start, peek(-1).End);
 }
 
+Stmt *
+Parser::parseSDS() {
+    AccessModifier accessCopy = access;
+    const Token firstTok = advance();
+    const Token nameTok = advance();
+    if (nameTok.Kind != TkId) {
+        _diag.Report(Error, "expected identifier")
+            .SetCode(ErrExpectedId)
+            .AddSpan(nameTok.Start, nameTok.End);
+    }
+    NameObj name = nameTok;
+    if (!expect(TkLBrace)) {
+        _diag.Report(Error, "expected '{'")
+            .SetCode(ErrExpectedToken)
+            .AddSpan(peek().Start, peek().End);
+    }
+    std::vector<StructDeclStmt::Field> fields;
+    while (!expect(TkRBrace)) {
+        fields.push_back(parseStructField());
+    }
+    return createNode<StructDeclStmt>(name, fields, accessCopy, firstTok.Start, peek(-1).End);
+}
+
+StructDeclStmt::Field
+Parser::parseStructField() {
+    AccessModifier access = expect(TkPub) ? Pub : Priv;
+    bool isStatic = expect(TkStatic);
+    const Token nameTok = advance();
+    if (nameTok.Kind != TkId) {
+        _diag.Report(Error, "expected identifier")
+            .SetCode(ErrExpectedId)
+            .AddSpan(nameTok.Start, nameTok.End);
+    }
+    NameObj name = nameTok;
+    if (!expect(TkColon)) {
+        _diag.Report(Error, "expected ':'")
+            .SetCode(ErrExpectedToken)
+            .AddSpan(peek().Start, peek().End);
+    }
+    Type *type = consumeType();
+    Expr *expr = nullptr;
+    if (expect(TkEq)) {
+        expr = parseExpr();
+    }
+    if (!expect(TkSemi)) {
+        _diag.Report(Error, "expected ';'")
+            .SetCode(ErrExpectedSemi)
+            .AddSpan(peek().Start, peek().End)
+            .AddHelp("add ';' to the end of the line");
+    }
+    return { name, type, access, isStatic, expr };
+}
+
 Expr *
 Parser::parsePrefixExpr(bool allowStruct) {
     const Token tok = advance();
@@ -368,6 +425,33 @@ Parser::parsePrefixExpr(bool allowStruct) {
                 std::vector<Expr *> args;
                 parseArgsInto(args);
                 return createNode<FuncCallExpr>(tok, args, peek(-1).End);
+            }
+            else if (allowStruct && expect(TkLBrace)) {
+                std::vector<std::pair<NameObj, Expr *>> fields;
+                while (!expect(TkRBrace)) {
+                    const Token nameTok = advance();
+                    if (nameTok.Kind != TkId) {
+                        _diag.Report(Error, "expected identifier")
+                            .SetCode(ErrExpectedId)
+                            .AddSpan(nameTok.Start, nameTok.End);
+                    }
+                    NameObj name = nameTok;
+                    if (!expect(TkColon)) {
+                        _diag.Report(Error, "expected ':'")
+                            .SetCode(ErrExpectedToken)
+                            .AddSpan(peek().Start, peek().End);
+                    }
+                    Expr *expr = parseExpr();
+                    if (peek().Kind != TkRBrace) {
+                        if (!expect(TkComma)) {
+                            _diag.Report(Error, "expected ','")
+                                .SetCode(ErrExpectedToken)
+                                .AddSpan(peek().Start, peek().End);
+                        }
+                    }
+                    fields.push_back({ name, expr });
+                }
+                return createNode<StructInstanceExpr>(tok, fields, peek(-1).End);
             }
             return createNode<VarExpr>(tok);
         }

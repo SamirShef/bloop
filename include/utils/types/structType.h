@@ -26,7 +26,7 @@ public:
 
     std::string
     ToString() override {
-        return "<struct " + _name.Name + '>';
+        return _name.Name;
     }
 };
 

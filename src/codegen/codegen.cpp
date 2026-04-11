@@ -18,6 +18,7 @@ CodeGen::generateNode(HIRNode *node) {
         NODE(HIRNkRetStmt, generateRS, HIRRetStmt);
         NODE(HIRNkBasicBlock, generateBB, HIRBasicBlock);
         NODE(HIRNkBranch, generateBR, HIRBranch);
+        NODE(HIRNkStructDeclStmt, generateSDS, HIRStructDeclStmt);
     }
     #undef NODE
 }
@@ -146,6 +147,16 @@ CodeGen::generateBR(HIRBranch *br) {
     return _builder.CreateBr(_blockMap.at(br->GetThen()));
 }
 
+llvm::Value *
+CodeGen::generateSDS(HIRStructDeclStmt *sds) {
+    std::vector<llvm::Type *> fields;
+    for (auto &f : sds->GetFields()) {
+        fields.push_back(getType(f));
+    }
+    llvm::StructType *s = llvm::StructType::create(_context, fields, sds->GetName());
+    return nullptr;
+}
+
 void
 CodeGen::generateImplicitMain() {
     llvm::Type *argcType = _builder.getInt32Ty();
@@ -184,6 +195,8 @@ CodeGen::generateExpr(HIRNode *expr) {
         NODE(HIRNkVarExpr, generateVE, HIRVarExpr);
         NODE(HIRNkCast, generateCast, HIRCastNode);
         NODE(HIRNkFuncCallExpr, generateFCE, HIRFuncCallExpr);
+        NODE(HIRNkStructInstanceExpr, generateSIE, HIRStructInstanceExpr);
+        NODE(HIRNkFieldExpr, generateFE, HIRFieldExpr);
     }
     #undef NODE
 }
@@ -394,6 +407,35 @@ CodeGen::generateFCE(HIRFuncCallExpr *fce) {
     return _builder.CreateCall(func, args, fce->GetName() + ".call");
 }
 
+llvm::Value *
+CodeGen::generateSIE(HIRStructInstanceExpr *sie) {
+    llvm::StructType *s = llvm::StructType::getTypeByName(_context, sie->GetName());
+    if (_builder.GetInsertBlock()) {
+        llvm::AllocaInst *alloca = _builder.CreateAlloca(s, nullptr, s->getName() + ".alloca");
+        for (const auto &f : sie->GetFields()) {
+            std::string name = s->getName().str() + "." + std::to_string(f.first);
+            llvm::Value *fieldPtr = _builder.CreateStructGEP(s, alloca, f.first, name + ".gep");
+            llvm::Value *val = generateExpr(f.second);
+            _builder.CreateStore(val, fieldPtr);
+        }
+        return _builder.CreateLoad(s, alloca, s->getName() + ".alloca.load");
+    }
+    else {
+        std::vector<llvm::Constant *> fieldValues;
+        for (const auto &f : sie->GetFields()) {
+            llvm::Value *val = generateExpr(f.second);
+            fieldValues.push_back(llvm::cast<llvm::Constant>(val));
+        }
+        return llvm::ConstantStruct::get(s, fieldValues);
+    }
+}
+
+llvm::Value *
+CodeGen::generateFE(HIRFieldExpr *fe) {
+    llvm::Value *base = generateExpr(fe->GetBase());
+    return _builder.CreateExtractValue(base, fe->GetIndex());
+}
+
 llvm::Type *
 CodeGen::getType(Type *type) {
     if (!type) {
@@ -432,7 +474,8 @@ CodeGen::getType(Type *type) {
             // TODO: implement
         }
         case Type::StructPtr: {
-            // TODO: implement
+            auto *s = type->AsStructPtr();
+            return llvm::StructType::getTypeByName(_context, s->GetBaseMod()->ToString() + "." + s->GetName().Name);
         }
         case Type::TraitPtr: {
             // TODO: implement

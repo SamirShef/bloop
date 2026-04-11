@@ -40,6 +40,7 @@ Semantic::analyzeStmt(Stmt *stmt) {
         NODE(NkForLoopStmt, analyzeFLS, ForLoopStmt);
         NODE(NkBreakStmt, analyzeBS, BreakStmt);
         NODE(NkContinueStmt, analyzeCS, ContinueStmt);
+        NODE(NkStructDeclStmt, analyzeSDS, StructDeclStmt);
         default: {
             _diag.Report(Error, "compiler limitation: statement type is currently unimplemented")
                 .SetCode(ErrLimitation)
@@ -109,7 +110,7 @@ Semantic::analyzeVAS(VarAsgnStmt *vas) {
                     .AddSpan(vas->GetStartLoc(), vas->GetEndLoc());
             }
             auto res = analyzeExpr(vas->GetExpr());
-            implicitlyCast(res, &it->second.Type);
+            res = implicitlyCast(res, &it->second.Type);
             _builder.CreateStore(it->second.Storage, it->second.Index, res.HirNode);
             return;
         }
@@ -139,7 +140,7 @@ Semantic::analyzeFAS(FieldAsgnStmt *fas) {
                     .AddSpan(fas->GetStartLoc(), fas->GetEndLoc());
             }
             auto res = analyzeExpr(fas->GetExpr());
-            implicitlyCast(res, &it->second.Type);
+            res = implicitlyCast(res, &it->second.Type);
             _builder.CreateStore(it->second.Storage, it->second.Index, res.HirNode);
             return;
         }
@@ -434,10 +435,6 @@ Semantic::analyzeMCS(MethodCallStmt *mcs) {
 void
 Semantic::analyzeUS(UsingStmt *us) {
     auto chain = us->GetPath();
-    if (chain.empty()) {
-        // TODO: create error
-        return;
-    }
 
     FileNode *node = nullptr;
     std::string matchPrefix = "";
@@ -523,6 +520,14 @@ Semantic::analyzeUS(UsingStmt *us) {
     for (auto &[name, obj] : node->Mod->Vars) {
         _builder.CreateVar(node->Mod->ToString() + "." + name, obj.Type, nullptr, Extern);
     }
+    for (auto &[name, s] : node->Mod->Structs) {
+        std::vector<Type *> fields;
+        for (auto &f : s.Fields) {
+            resolveType(&f.Var.Type);
+            fields.push_back(f.Var.Type);
+        }
+        _builder.CreateStruct(s.GetMangledName(), fields);
+    }
     for (auto &[name, candidates] : node->Mod->FuncOverloads) {
         for (auto &c : candidates.Candidates) {
             std::vector<HIRFuncArgument> hirArgs;
@@ -564,7 +569,7 @@ Semantic::analyzeIES(IfElseStmt *ies) {
 
     auto condRes = analyzeExpr(ies->GetCond());
     Type *boolType = new IntegerType(1, false, condRes.Val.Start, condRes.Val.End);
-    implicitlyCast(condRes, &boolType);
+    condRes = implicitlyCast(condRes, &boolType);
     _builder.CreateBr(condRes.HirNode, thenBody, elseBody);
 
     _builder.SetInsertPoint(thenBody);
@@ -608,7 +613,7 @@ Semantic::analyzeFLS(ForLoopStmt *fls) {
     _builder.SetInsertPoint(cond);
     auto condRes = analyzeExpr(fls->GetCond());
     Type *boolType = new IntegerType(1, false, condRes.Val.Start, condRes.Val.End);
-    implicitlyCast(condRes, &boolType);
+    condRes = implicitlyCast(condRes, &boolType);
     _builder.CreateBr(condRes.HirNode, iteration, exit);
 
     _builder.SetInsertPoint(iteration);
@@ -652,6 +657,55 @@ Semantic::analyzeCS(ContinueStmt *cs) {
     _builder.CreateBr(_loops.top().Continue);
 }
 
+void
+Semantic::analyzeSDS(StructDeclStmt *sds) {
+    if (auto it = _mod->Structs.find(sds->GetName().Name); it != _mod->Structs.end()) {
+        _diag.Report(Error, "redefinition of '" + sds->GetName().Name + "'")
+            .SetCode(ErrRedefinition)
+            .AddSpan(it->second.Name.Start, it->second.Name.End, "previous definition is here")
+            .AddSpan(sds->GetName().Start, sds->GetName().End, "redefinition here");
+        return;
+    }
+
+    std::unordered_map<std::string, Field *> fieldsMap;
+    std::vector<Field> fields;
+    std::vector<Type *> fieldsTypes;
+    for (auto &f : sds->GetFields()) {
+        if (auto it = fieldsMap.find(f.Name.Name); it != fieldsMap.end()) {
+            _diag.Report(Error, "redefinition of '" + f.Name.Name + "'")
+                .SetCode(ErrRedefinition)
+                .AddSpan(it->second->Var.Name.Start, it->second->Var.Name.End, "previous definition is here")
+                .AddSpan(f.Name.Start, f.Name.End, "redefinition here");
+            continue;
+        }
+        if (f.Type->IsUnknownNamedType()) {
+            auto *unknown = f.Type->AsUnknownNamedType();
+            if (unknown->GetName().Name == sds->GetName().Name) {
+                _diag.Report(Error, "recursive type '" + sds->GetName().Name + "' has infinite size")
+                    .SetCode(ErrRecursiveType)
+                    .AddSpan(f.Type->GetStartLoc(), f.Type->GetEndLoc());
+                continue;
+            }
+        }
+        resolveType(&f.Type);
+        Field field(Variable(f.Name, f.Type, false, f.Access, Value::GetIncorrectValue()), f.IsStatic, f.Access);
+        SemanticResult defaultVal;
+        if (f.DefaultVal) {
+            defaultVal = analyzeExpr(f.DefaultVal);
+            defaultVal = implicitlyCast(defaultVal, &f.Type);
+        }
+        if (f.IsStatic) {
+            _builder.CreateVar(_mod->ToString() + "." + sds->GetName().Name + "." + f.Name.Name, f.Type, defaultVal.HirNode, Static);
+        }
+        fields.push_back(field);
+        fieldsMap.emplace(f.Name.Name, &fields.back());
+        fieldsTypes.push_back(f.Type);
+    }
+    
+    auto *hirNode = _builder.CreateStruct(_mod->ToString() + "." + sds->GetName().Name, fieldsTypes);
+    _mod->Structs.emplace(sds->GetName().Name, Struct(sds->GetName(), _mod, fields, sds->GetAccess()));
+}
+
 Semantic::SemanticResult
 Semantic::analyzeExpr(Expr *expr) {
     #define NODE(k, f, t) case k: return f(llvm::cast<t>(expr));
@@ -663,6 +717,7 @@ Semantic::analyzeExpr(Expr *expr) {
         NODE(NkFuncCallExpr, analyzeFCE, FuncCallExpr);
         NODE(NkFieldExpr, analyzeFE, FieldExpr);
         NODE(NkMethodCallExpr, analyzeMCE, MethodCallExpr);
+        NODE(NkStructInstanceExpr, analyzeSIE, StructInstanceExpr);
         default: {
             _diag.Report(Error, "compiler limitation: expression type is currently unimplemented")
                 .SetCode(ErrLimitation)
@@ -920,6 +975,29 @@ Semantic::analyzeFE(FieldExpr *fe) {
             .AddSpan(fe->GetName().Start, fe->GetName().End, "undeclared");
         return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
     }
+    else if (baseRes.Val.Type->IsStructPtr()) {
+        auto *st = baseRes.Val.Type->AsStructPtr();
+        auto &s = st->GetBaseMod()->Structs.at(st->GetName().Name);
+        auto it = std::find_if(s.Fields.begin(), s.Fields.end(), [&](const Field &f) {
+            return f.Var.Name.Name == fe->GetName().Name;
+        });
+        if (it == s.Fields.end()) {
+            _diag.Report(Error, "symbol '" + fe->GetName().Name + "' is undeclared in struct '" + s.Name.Name + "'")
+                .SetCode(ErrUndeclaredSymbol)
+                .AddSpan(fe->GetName().Start, fe->GetName().End, "undeclared");
+            return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+        }
+        if (it->Access != Pub) {
+            _diag.Report(Error, "symbol '" + fe->GetName().Name + "' is private")
+                .SetCode(ErrPrivateSymbol)
+                .AddSpan(fe->GetName().Start, fe->GetName().End, "private symbol")
+                .AddHelp("consider using the 'pub' keyword to make field '" + fe->GetName().Name + "' accessible")
+                .AddHelp("consider using a public method or API instead");
+            return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+        }
+        return { Value(Value::Unknown, ValueData(), it->Var.Type, fe->GetStartLoc(), fe->GetEndLoc()),
+                 _builder.CreateFieldExpr(baseRes.HirNode, it - s.Fields.begin()) };
+    }
     _diag.Report(Error, "symbol '" + fe->GetName().Name + "' is undeclared")
         .SetCode(ErrUndeclaredSymbol)
         .AddSpan(fe->GetName().Start, fe->GetName().End, "undeclared");
@@ -973,6 +1051,44 @@ Semantic::analyzeMCE(MethodCallExpr *mce) {
         .SetCode(ErrUndeclaredSymbol)
         .AddSpan(mce->GetName().Start, mce->GetName().End, "undeclared");
     return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+}
+
+Semantic::SemanticResult
+Semantic::analyzeSIE(StructInstanceExpr *sie) {
+    auto *s = findStruct(sie->GetName().Name);
+    if (!s) {
+        _diag.Report(Error, "symbol '" + sie->GetName().Name + "' is undeclared")
+            .SetCode(ErrUndeclaredSymbol)
+            .AddSpan(sie->GetName().Start, sie->GetName().End, "undeclared");
+        return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+    }
+    std::vector<std::pair<int, HIRNode *>> fields;
+    for (int i = 0; i < sie->GetFields().size(); ++i) {
+        auto it = std::find_if(s->Fields.begin(), s->Fields.end(), [&](const Field &f) {
+            return f.Var.Name.Name == sie->GetFields()[i].first.Name;
+        });
+
+        if (it == s->Fields.end()) {
+            _diag.Report(Error, "symbol '" + sie->GetFields()[i].first.Name + "' is undeclared in structure '" + sie->GetName().Name + "'")
+                .SetCode(ErrUndeclaredSymbol)
+                .AddSpan(sie->GetFields()[i].first.Start, sie->GetFields()[i].first.End);
+            continue;
+        }
+        if (it->Access == Priv) {
+            _diag.Report(Error, "struct '" + sie->GetName().Name + "' has inaccessible fields and cannot be initialized directly")
+                .SetCode(ErrPrivateSymbol)
+                .AddSpan(sie->GetName().Start, sie->GetName().End);
+            return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+        }
+
+        auto res = analyzeExpr(sie->GetFields()[i].second);
+        res = implicitlyCast(res, &it->Var.Type);
+        fields.push_back({ it - s->Fields.begin(), res.HirNode });
+    }
+    auto val = Value(Value::Const, ValueData(), new StructType(sie->GetName(), _mod, sie->GetName().Start, sie->GetName().End),
+                            sie->GetStartLoc(), sie->GetEndLoc());
+    auto hitNode = _builder.CreateStructInstance(s->GetMangledName(), fields);
+    return { val, hitNode };
 }
 
 void
@@ -1207,10 +1323,9 @@ Semantic::implicitlyCast(SemanticResult res, Type **expectedType) {
 
 Semantic::CastCost
 Semantic::checkCastCost(Type *src, Type *dst) {
-    if (src == dst) {
+    if (*src == *dst) {
         return Exact;
     }
-
 
     if (src->IsInteger() && dst->IsInteger()) {
         auto *srcI = src->AsInteger();

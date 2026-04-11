@@ -40,6 +40,8 @@ enum ErrorCode : uint8_t {
     ErrUndeclaredSymbol,
     ErrReasgnConst,
     ErrControlFlowOpOutsideLoop,
+    ErrRecursiveType,
+    ErrEmptyImportPath,
 };
 
 enum WarnCode : uint8_t {

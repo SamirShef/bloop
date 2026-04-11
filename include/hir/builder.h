@@ -8,6 +8,7 @@ namespace bloop {
 
 class HIRContext {
     llvm::BumpPtrAllocator _allocator;
+    std::vector<HIRStructDeclStmt *> _structs;
     std::vector<HIRFuncDeclStmt *> _functions;
     std::vector<HIRVarDeclStmt *> _globals;
 
@@ -37,6 +38,11 @@ public:
         _functions.push_back(func);
     }
     
+    std::vector<HIRStructDeclStmt *> &
+    GetStructs() {
+        return _structs;
+    }
+    
     std::vector<HIRVarDeclStmt *> &
     GetGlobals() {
         return _globals;
@@ -45,6 +51,11 @@ public:
     void
     AddGlobal(HIRVarDeclStmt *var) {
         _globals.push_back(var);
+    }
+
+    void
+    AddStruct(HIRStructDeclStmt *s) {
+        _structs.push_back(s);
     }
 };
     
@@ -164,6 +175,23 @@ public:
         auto *node = _ctx.CreateNode<HIRRetStmt>(type, expr);
         AddToBlock(node);
         return node;
+    }
+
+    HIRStructDeclStmt *
+    CreateStruct(std::string name, std::vector<Type *> &fields) {
+        auto *node = _ctx.CreateNode<HIRStructDeclStmt>(name, fields);
+        _ctx.AddStruct(node);
+        return node;
+    }
+
+    HIRStructInstanceExpr *
+    CreateStructInstance(std::string name, std::vector<std::pair<int, HIRNode *>> &fields) {
+        return _ctx.CreateNode<HIRStructInstanceExpr>(name, fields);
+    }
+
+    HIRFieldExpr *
+    CreateFieldExpr(HIRNode *base, int index) {
+        return _ctx.CreateNode<HIRFieldExpr>(base, index);
     }
 
     HIRNode *

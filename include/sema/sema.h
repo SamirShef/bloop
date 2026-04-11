@@ -22,6 +22,9 @@ class Semantic {
     struct SemanticResult {
         Value Val;
         HIRNode *HirNode;
+
+        SemanticResult() : Val(Value::GetIncorrectValue()), HirNode(nullptr) {}
+        SemanticResult(Value v, HIRNode *h) : Val(v), HirNode(h) {}
     };
 
     enum CastCost {
@@ -54,13 +57,22 @@ public:
             if (!s) {
                 continue;
             }
+            if (s->GetKind() == NkStructDeclStmt) {
+                analyzeSDS(llvm::cast<StructDeclStmt>(s));
+            }
+        }
+
+        for (auto &s : ast) {
+            if (!s) {
+                continue;
+            }
             if (s->GetKind() == NkFuncDeclStmt) {
                 registerFunc(llvm::cast<FuncDeclStmt>(s));
             }
         }
 
         for (auto &s : ast) {
-            if (!s) {
+            if (!s || s->GetKind() == NkStructDeclStmt) {
                 continue;
             }
             analyzeStmt(s);
@@ -121,6 +133,9 @@ private:
     void
     analyzeCS(ContinueStmt *cs);
 
+    void
+    analyzeSDS(StructDeclStmt *sds);
+
     SemanticResult
     analyzeExpr(Expr *expr);
 
@@ -144,6 +159,9 @@ private:
 
     SemanticResult
     analyzeMCE(MethodCallExpr *mce);
+
+    SemanticResult
+    analyzeSIE(StructInstanceExpr *sie);
 
     Variable *
     findGlobVar(std::string name) {

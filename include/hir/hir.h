@@ -5,7 +5,10 @@
 #include <hir/le.h>
 #include <hir/ue.h>
 #include <hir/vds.h>
+#include <hir/sds.h>
 #include <hir/ve.h>
 #include <hir/vs.h>
 #include <hir/rs.h>
 #include <hir/fce.h>
+#include <hir/sie.h>
+#include <hir/fe.h>

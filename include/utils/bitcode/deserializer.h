@@ -8,7 +8,8 @@ namespace bloop {
 
 class Deserializer {
     std::vector<std::string> _strPool;
-    std::vector<Type *> _parsedTypes;
+    std::vector<Type *> _types;
+    std::vector<Module *> _modules;
 
 public:
     bool
@@ -54,6 +55,9 @@ public:
                     }
                     _strPool.push_back(s);
                 }
+            }
+            else if (entry.ID == ModPoolBlockID) {
+                readModPool(root, cursor);
             }
             else if (entry.ID == TypePoolBlockID) {
                 readTypePool(cursor);
@@ -117,7 +121,7 @@ private:
         llvm::SMLoc emptyLoc;
         
         NameObj name(_strPool[record[0]], emptyLoc, emptyLoc);
-        Type *type = _parsedTypes[record[1]];
+        Type *type = _types[record[1]];
         bool isConst = static_cast<bool>(record[2]);
         AccessModifier access = static_cast<AccessModifier>(record[3]);
         StorageKind storage = static_cast<StorageKind>(record[4]);
@@ -132,14 +136,14 @@ private:
         llvm::SMLoc emptyLoc;
         
         NameObj name(_strPool[record[0]], emptyLoc, emptyLoc);
-        Type *retType = _parsedTypes[record[1]];
+        Type *retType = _types[record[1]];
         AccessModifier access = static_cast<AccessModifier>(record[2]);
         StorageKind storage = static_cast<StorageKind>(record[3]);
         int argsCount = static_cast<int>(record[4]);
         std::vector<Argument> args;
         for (int i = 0; i < argsCount; ++i) {
             NameObj argName("", emptyLoc, emptyLoc);
-            Type *argType = _parsedTypes[record[5 + i]];
+            Type *argType = _types[record[5 + i]];
             args.push_back(Argument(argName, argType));
         }
 
@@ -171,7 +175,7 @@ private:
                         subMod = parent->Submods[subName];
                     }
                     else {
-                        subMod = new Module(subName, static_cast<AccessModifier>(record[1]));
+                        subMod = new Module(subName, static_cast<AccessModifier>(record[1]), parent);
                         parent->Submods[subName] = subMod;
                     }
 
@@ -186,9 +190,59 @@ private:
     }
 
     void
+    readModPool(Module *root, llvm::BitstreamCursor &cursor) {
+        cursor.EnterSubBlock(ModPoolBlockID);
+        _modules.push_back(nullptr);
+
+        while (!cursor.AtEndOfStream()) {
+            auto entryOrErr = cursor.advance();
+            if (!entryOrErr) {
+                break;
+            }
+            auto entry = entryOrErr.get();
+            
+            if (entry.Kind == llvm::BitstreamEntry::EndBlock) {
+                break;
+            }
+            if (entry.Kind != llvm::BitstreamEntry::Record) {
+                continue;
+            }
+
+            llvm::SmallVector<uint64_t, 2> record;
+            cursor.readRecord(entry.ID, record);
+
+            std::string name = _strPool[record[0]];
+            uint32_t parentId = record[1];
+
+            Module *parentMod = parentId < _modules.size() ? _modules[parentId] : nullptr;
+            Module *newMod = nullptr;
+
+            if (!parentMod) {
+                if (root && root->Name == name) {
+                    newMod = root;
+                }
+                else {
+                    newMod = new Module(name, Pub, nullptr);
+                }
+            }
+            else {
+                if (parentMod->Submods.count(name)) {
+                    newMod = parentMod->Submods[name];
+                }
+                else {
+                    newMod = new Module(name, Pub, parentMod);
+                    parentMod->Submods[name] = newMod;
+                }
+            }
+            
+            _modules.push_back(newMod);
+        }
+    }
+
+    void
     readTypePool(llvm::BitstreamCursor &cursor) {
         cursor.EnterSubBlock(TypePoolBlockID);
-        _parsedTypes.push_back(nullptr);
+        _types.push_back(nullptr);
 
         llvm::SMLoc emptyLoc;
 
@@ -203,22 +257,26 @@ private:
 
             switch (code) {
                 case TypeIdInteger:
-                    _parsedTypes.push_back(new IntegerType(record[0], record[1], emptyLoc, emptyLoc));
+                    _types.push_back(new IntegerType(record[0], record[1], emptyLoc, emptyLoc));
                     break;
                 case TypeIdFloating:
-                    _parsedTypes.push_back(new FloatingType(static_cast<FloatingType::FloatingKind>(record[0]), emptyLoc, emptyLoc));
+                    _types.push_back(new FloatingType(static_cast<FloatingType::FloatingKind>(record[0]), emptyLoc, emptyLoc));
                     break;
                 case TypeIdPointer:
-                    _parsedTypes.push_back(new PointerType(_parsedTypes[record[0]], emptyLoc, emptyLoc));
+                    _types.push_back(new PointerType(_types[record[0]], emptyLoc, emptyLoc));
                     break;
-                case TypeIdStruct:
-                    _parsedTypes.push_back(new StructType(NameObj(_strPool[record[0]], emptyLoc, emptyLoc), nullptr, emptyLoc, emptyLoc));
+                case TypeIdStruct: {
+                    Module *baseMod = record[1] < _modules.size() ? _modules[record[1]] : nullptr;
+                    _types.push_back(new StructType(NameObj(_strPool[record[0]], emptyLoc, emptyLoc), baseMod, emptyLoc, emptyLoc));
                     break;
-                case TypeIdTrait:
-                    _parsedTypes.push_back(new TraitType(NameObj(_strPool[record[0]], emptyLoc, emptyLoc), nullptr, emptyLoc, emptyLoc));
+                }
+                case TypeIdTrait: {
+                    Module *baseMod = record[1] < _modules.size() ? _modules[record[1]] : nullptr;
+                    _types.push_back(new TraitType(NameObj(_strPool[record[0]], emptyLoc, emptyLoc), baseMod, emptyLoc, emptyLoc));
                     break;
+                }
                 case TypeIdNoth:
-                    _parsedTypes.push_back(new NothType(emptyLoc, emptyLoc));
+                    _types.push_back(new NothType(emptyLoc, emptyLoc));
                     break;
             }
         }

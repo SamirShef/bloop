@@ -18,6 +18,7 @@ enum NodeKind : uint8_t {
     NkBreakStmt,
     NkContinueStmt,
     NkMethodCallStmt,
+    NkStructDeclStmt,
     NkEndStmts,
 
     NkStartExprs,
@@ -28,6 +29,7 @@ enum NodeKind : uint8_t {
     NkFieldExpr,
     NkFuncCallExpr,
     NkMethodCallExpr,
+    NkStructInstanceExpr,
     NkEndExprs
 };
 

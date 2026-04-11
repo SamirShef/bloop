@@ -5,7 +5,7 @@
 #include <utils/types/type.h>
 #include <diag/engine.h>
 #include <lexer/token.h>
-#include <ast/stmt.h>
+#include <ast/stmts/sds.h>
 #include <ast/exprs/ve.h>
 #include <ast/exprs/fe.h>
 #include <vector>
@@ -65,6 +65,12 @@ private:
 
     Stmt *
     parseFLS();
+
+    Stmt *
+    parseSDS();
+
+    StructDeclStmt::Field
+    parseStructField();
     
     Expr *
     parsePrefixExpr(bool allowStruct = true);

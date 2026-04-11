@@ -2,7 +2,6 @@
 #include <utils/symbols/trait.h>
 #include <utils/symbols/access.h>
 #include <utils/symbols/variable.h>
-#include <string>
 #include <vector>
 
 namespace bloop {
@@ -17,13 +16,17 @@ struct Field {
 };
 
 struct Struct {
-    std::string         Name;
+    NameObj             Name;
+    Module             *Parent;
     std::vector<Field>  Fields;
     std::vector<Method> Methods {};
     AccessModifier      Access;
     uint                RefsCount = 0;
 
-    explicit Struct(std::string n, std::vector<Field> &f, AccessModifier a) : Name(n), Fields(f), Access(a) {}
+    explicit Struct(NameObj n, Module *p, std::vector<Field> &f, AccessModifier a) : Name(n), Parent(p), Fields(f), Access(a) {}
+
+    std::string
+    GetMangledName() const;
 };
 
 }
