@@ -202,6 +202,53 @@ private:
         return nullptr;
     }
 
+    Struct *
+    findStructByPath(const std::vector<NameObj> &path) {
+        if (path.empty()) {
+            return nullptr;
+        }
+        if (path.size() == 1) {
+            return findStruct(path[0].Name);
+        }
+
+        Module *currentMod = nullptr;
+        if (_mod->Imports.count(path[0].Name)) {
+            currentMod = _mod->Imports[path[0].Name];
+        }
+        else if (_mod->Submods.count(path[0].Name)) {
+            currentMod = _mod->Submods[path[0].Name];
+        }
+        else {
+            return nullptr;
+        }
+
+        for (int i = 1; i < path.size() - 1; ++i) {
+            if (currentMod->Submods.count(path[i].Name)) {
+                currentMod = currentMod->Submods[path[i].Name];
+            }
+            else {
+                _diag.Report(Error, "symbol '" + path[i].Name + "' is undeclared in module '" + currentMod->ToString() + "'")
+                    .SetCode(ErrUndeclaredSymbol)
+                    .AddSpan(path[i].Start, path[i].End, "undeclared");
+                return nullptr;
+            }
+        }
+
+        if (currentMod->Structs.count(path.back().Name)) {
+            auto *s = &currentMod->Structs.at(path.back().Name);
+            if (s->Access == Pub) {
+                return s;
+            }
+            else {
+                _diag.Report(Error, "symbol '" + s->Name.Name + "' is private")
+                    .SetCode(ErrPrivateSymbol)
+                    .AddSpan(s->Name.Start, s->Name.End, "private symbol")
+                    .AddHelp("consider using the 'pub' keyword to make struct '" + s->Name.Name + "' accessible");
+            }
+        }
+        return nullptr;
+    }
+
     Trait *
     findTrait(std::string name) {
         auto it = _mod->Traits.find(name);

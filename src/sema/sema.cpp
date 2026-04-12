@@ -131,7 +131,7 @@ Semantic::analyzeFAS(FieldAsgnStmt *fas) {
                 _diag.Report(Error, "symbol '" + fas->GetName().Name + "' is private")
                     .SetCode(ErrPrivateSymbol)
                     .AddSpan(fas->GetName().Start, fas->GetName().End, "private symbol")
-                    .AddHelp("consider using the 'pub' keyword to make field '" + fas->GetName().Name + "' accessible")
+                    .AddHelp("consider using the 'pub' keyword to make variable '" + fas->GetName().Name + "' accessible")
                     .AddHelp("consider using a public method or API instead");
             }
             if (it->second.IsConst) {
@@ -310,7 +310,7 @@ Semantic::registerFunc(FuncDeclStmt *fds) {
         candidates = &_mod->FuncOverloads.at(name);
     }
 
-    Function func(fds->GetName(), nullptr, fds->GetArgs(), fds->GetAccess(), Static, _mod);
+    Function func(fds->GetName(), fds->GetRetType(), fds->GetArgs(), fds->GetAccess(), Static, _mod);
     func.ASTNode = fds;
     func.Status = NotAnalyzed;
     candidates->Candidates.push_back(func);
@@ -331,7 +331,7 @@ Semantic::resolveFuncSignature(Function *func) {
     for (int i = 0; i < fds->GetArgs().size(); ++i) {
         auto &a = fds->GetArgs()[i];
         resolveType(&a.Type);
-        resolveType(&func->Args[i].Type);
+        func->Args[i].Type = a.Type;
     }
 
     std::vector<HIRFuncArgument> hirArgs;
@@ -392,7 +392,7 @@ Semantic::analyzeFuncBody(FuncDeclStmt *fds) {
             .SetCode(ErrHasntRet)
             .AddSpan(fds->GetName().Start, fds->GetName().End);
     }
-    else if (!hasRet && (!fds->GetRetType() || fds->GetRetType() && fds->GetRetType()->IsNothType())) {
+    else if (!hasRet && (!fds->GetRetType() || fds->GetRetType()->IsNothType())) {
         _builder.CreateRet(new NothType(llvm::SMLoc(), llvm::SMLoc()), nullptr);
     }
 
@@ -680,7 +680,7 @@ Semantic::analyzeSDS(StructDeclStmt *sds) {
         }
         if (f.Type->IsUnknownNamedType()) {
             auto *unknown = f.Type->AsUnknownNamedType();
-            if (unknown->GetName().Name == sds->GetName().Name) {
+            if (unknown->GetPath().size() == 1 && unknown->GetPath()[0].Name == sds->GetName().Name) {
                 _diag.Report(Error, "recursive type '" + sds->GetName().Name + "' has infinite size")
                     .SetCode(ErrRecursiveType)
                     .AddSpan(f.Type->GetStartLoc(), f.Type->GetEndLoc());
@@ -951,7 +951,7 @@ Semantic::analyzeFE(FieldExpr *fe) {
                 _diag.Report(Error, "symbol '" + fe->GetName().Name + "' is private")
                     .SetCode(ErrPrivateSymbol)
                     .AddSpan(fe->GetName().Start, fe->GetName().End, "private symbol")
-                    .AddHelp("consider using the 'pub' keyword to make field '" + fe->GetName().Name + "' accessible")
+                    .AddHelp("consider using the 'pub' keyword to make variable '" + fe->GetName().Name + "' accessible")
                     .AddHelp("consider using a public method or API instead");
                 return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
             }
@@ -963,8 +963,7 @@ Semantic::analyzeFE(FieldExpr *fe) {
                 _diag.Report(Error, "symbol '" + fe->GetName().Name + "' is private")
                     .SetCode(ErrPrivateSymbol)
                     .AddSpan(fe->GetName().Start, fe->GetName().End, "private symbol")
-                    .AddHelp("consider using the 'pub' keyword to make field '" + fe->GetName().Name + "' accessible")
-                    .AddHelp("consider using a public method or API instead");
+                    .AddHelp("consider using the 'pub' keyword to make module '" + fe->GetName().Name + "' accessible");
                 return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
             }
             return { Value(Value::Unknown, ValueData(), new ModuleType(it->second, fe->GetName().Start, fe->GetName().End),
@@ -1055,11 +1054,17 @@ Semantic::analyzeMCE(MethodCallExpr *mce) {
 
 Semantic::SemanticResult
 Semantic::analyzeSIE(StructInstanceExpr *sie) {
-    auto *s = findStruct(sie->GetName().Name);
+    const auto &path = sie->GetPath();
+    auto *s = findStructByPath(path);
+    std::string fullPath = path[0].Name;
+    for (int i = 1; i < path.size(); ++i) {
+        fullPath += '.' + path[i].Name;
+    }
+
     if (!s) {
-        _diag.Report(Error, "symbol '" + sie->GetName().Name + "' is undeclared")
+        _diag.Report(Error, "symbol '" + fullPath + "' is undeclared")
             .SetCode(ErrUndeclaredSymbol)
-            .AddSpan(sie->GetName().Start, sie->GetName().End, "undeclared");
+            .AddSpan(sie->GetPath().front().Start, sie->GetPath().back().End, "undeclared");
         return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
     }
     std::vector<std::pair<int, HIRNode *>> fields;
@@ -1069,15 +1074,15 @@ Semantic::analyzeSIE(StructInstanceExpr *sie) {
         });
 
         if (it == s->Fields.end()) {
-            _diag.Report(Error, "symbol '" + sie->GetFields()[i].first.Name + "' is undeclared in structure '" + sie->GetName().Name + "'")
+            _diag.Report(Error, "symbol '" + sie->GetFields()[i].first.Name + "' is undeclared in structure '" + fullPath + "'")
                 .SetCode(ErrUndeclaredSymbol)
                 .AddSpan(sie->GetFields()[i].first.Start, sie->GetFields()[i].first.End);
             continue;
         }
         if (it->Access == Priv) {
-            _diag.Report(Error, "struct '" + sie->GetName().Name + "' has inaccessible fields and cannot be initialized directly")
+            _diag.Report(Error, "struct '" + fullPath + "' has inaccessible fields and cannot be initialized directly")
                 .SetCode(ErrPrivateSymbol)
-                .AddSpan(sie->GetName().Start, sie->GetName().End);
+                .AddSpan(sie->GetPath().front().Start, sie->GetPath().back().End);
             return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
         }
 
@@ -1085,7 +1090,7 @@ Semantic::analyzeSIE(StructInstanceExpr *sie) {
         res = implicitlyCast(res, &it->Var.Type);
         fields.push_back({ it - s->Fields.begin(), res.HirNode });
     }
-    auto val = Value(Value::Const, ValueData(), new StructType(sie->GetName(), _mod, sie->GetName().Start, sie->GetName().End),
+    auto val = Value(Value::Const, ValueData(), new StructType(s->Name, s->Parent, sie->GetPath().front().Start, sie->GetPath().back().End),
                             sie->GetStartLoc(), sie->GetEndLoc());
     auto hitNode = _builder.CreateStructInstance(s->GetMangledName(), fields);
     return { val, hitNode };
@@ -1126,19 +1131,25 @@ Semantic::resolveType(Type **t) {
     }
 
     UnknownNamedType *unt = (*t)->AsUnknownNamedType();
-    if (auto *st = findStruct(unt->GetName().Name)) {
+    const auto &path = unt->GetPath();
+
+    if (auto *st = findStructByPath(path)) {
         delete *t;
-        *t = new StructType(unt->GetName(), _mod, unt->GetStartLoc(), unt->GetEndLoc());
+        *t = new StructType(path.back(), st->Parent, unt->GetStartLoc(), unt->GetEndLoc());
         return *t;
     }
-    if (auto *tr = findTrait(unt->GetName().Name)) {
+
+    /* TODO: implement findTraitByPath
+    if (auto *trt = findTraitByPath(path)) {
         delete *t;
-        *t = new TraitType(unt->GetName(), _mod, unt->GetStartLoc(), unt->GetEndLoc());
+        *t = new TraitType(path.back(), trt->Parent, unt->GetStartLoc(), unt->GetEndLoc());
         return *t;
     }
-    _diag.Report(Error, "unknown type `" + unt->GetName().Name + "` at this scope")
+    */
+
+    _diag.Report(Error, "unknown type '" + unt->ToString() + "' at this scope")
         .SetCode(ErrUnknownType)
-        .AddSpan(unt->GetName().Start, unt->GetName().End);
+        .AddSpan(path.front().Start, path.back().End);
     return *t;
 }
 

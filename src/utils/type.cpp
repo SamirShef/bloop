@@ -53,7 +53,7 @@ operator==(const Type &lhs, const Type &rhs) {
         case Type::StructPtr: {
             auto l = lhs.AsStructPtr();
             auto r = rhs.AsStructPtr();
-            return l->GetName().Name == r->GetName().Name && l->GetBaseMod() == r->GetBaseMod();
+            return l->GetName().Name == r->GetName().Name && *l->GetBaseMod() == *r->GetBaseMod();
         }
         default:
             return true;

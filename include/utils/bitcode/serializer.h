@@ -165,6 +165,10 @@ private:
         }
         for (auto &[name, s] : mod->Structs) {
             _strPool.GetID(s.Name.Name);
+            for (auto &f : s.Fields) {
+                _strPool.GetID(f.Var.Name.Name);
+                _typesPool.GetID(f.Var.Type);
+            }
         }
         for (auto &[name, mod] : mod->Imports) {
             collectStringsAndTypes(mod);
@@ -274,6 +278,7 @@ private:
 
         serializeVars(w, mod->Vars);
         serializeFuncs(w, mod->FuncOverloads);
+        serializeStructs(w, mod->Structs);
 
         for (auto &[name, mod] : mod->Imports) {
             serializeModule(w, mod);
@@ -316,6 +321,25 @@ private:
                 }
                 w.EmitRecord(SymFunc, funcRec);
             }
+        }
+    }
+
+    void
+    serializeStructs(llvm::BitstreamWriter &w, const std::unordered_map<std::string, Struct> &structs) {
+        for (auto &[name, s] : structs) {
+            llvm::SmallVector<uint64_t, 64> structRec = {
+                static_cast<uint64_t>(_strPool.GetID(name)),
+                static_cast<uint64_t>(s.Access),
+                static_cast<uint64_t>(_modPool.GetID(s.Parent)),
+                static_cast<uint64_t>(s.Fields.size())
+            };
+            for (auto &f : s.Fields) {
+                structRec.push_back(static_cast<uint64_t>(_strPool.GetID(f.Var.Name.Name)));
+                structRec.push_back(static_cast<uint64_t>(_typesPool.GetID(f.Var.Type)));
+                structRec.push_back(static_cast<uint64_t>(f.Access));
+                structRec.push_back(static_cast<uint64_t>(f.IsStatic));
+            }
+            w.EmitRecord(SymStruct, structRec);
         }
     }
 };

@@ -415,8 +415,60 @@ Parser::parsePrefixExpr(bool allowStruct) {
         case TkBang: {
             return createNode<UnaryExpr>(tok, parsePrefixExpr(allowStruct), tok.Start, peek(-1).End);
         }
-
         case TkId: {
+            std::vector<NameObj> path;
+            path.push_back(tok);
+
+            while (peek().Kind == TkDot && peek(1).Kind == TkId && peek(2).Kind != TkLParen) {
+                advance();
+                path.push_back(advance());
+            }
+
+            if (expect(TkLParen)) {
+                std::vector<Expr *> args;
+                parseArgsInto(args);
+                return createNode<FuncCallExpr>(path[0], args, peek(-1).End);
+            }
+            else if (allowStruct && expect(TkLBrace)) {
+                std::vector<std::pair<NameObj, Expr *>> fields;
+                while (!expect(TkRBrace)) {
+                    const Token nameTok = advance();
+                    if (nameTok.Kind != TkId) {
+                        _diag.Report(Error, "expected identifier")
+                            .SetCode(ErrExpectedId)
+                            .AddSpan(nameTok.Start, nameTok.End);
+                    }
+                    NameObj name = nameTok;
+                    if (!expect(TkColon)) {
+                        _diag.Report(Error, "expected ':'")
+                            .SetCode(ErrExpectedToken)
+                            .AddSpan(peek().Start, peek().End);
+                    }
+                    Expr *expr = parseExpr();
+                    if (peek().Kind != TkRBrace) {
+                        if (!expect(TkComma)) {
+                            _diag.Report(Error, "expected ','")
+                                .SetCode(ErrExpectedToken)
+                                .AddSpan(peek().Start, peek().End);
+                        }
+                    }
+                    fields.push_back({ name, expr });
+                }
+                return createNode<StructInstanceExpr>(path, fields, peek(-1).End);
+            }
+
+            Expr *expr = createNode<VarExpr>(path[0]);
+            for (int i = 1; i < path.size(); ++i) {
+                expr = createNode<FieldExpr>(expr, path[i]);
+            }
+            
+            if (peek().Kind == TkDot) {
+                expr = parseChain(expr);
+            }
+            return expr;
+        }
+
+        /* case TkId: {
             if (peek().Kind == TkDot) {
                 Expr *expr = createNode<VarExpr>(tok);
                 return parseChain(expr);
@@ -454,7 +506,7 @@ Parser::parsePrefixExpr(bool allowStruct) {
                 return createNode<StructInstanceExpr>(tok, fields, peek(-1).End);
             }
             return createNode<VarExpr>(tok);
-        }
+        } */
     }
     _diag.Report(Error, "expected expression")
         .SetCode(ErrExpectedExpr)
@@ -594,7 +646,14 @@ Parser::consumeType() {
         case TkNoth:
             return new NothType(c.Start, c.End);
         case TkId: {
-            return new UnknownNamedType(c, c.Start, c.End);
+            std::vector<NameObj> path;
+            path.push_back(c);
+            
+            while (peek().Kind == TkDot && peek(1).Kind == TkId) {
+                advance();
+                path.push_back(advance());
+            }
+            return new UnknownNamedType(path, c.Start, path.back().End);
         }
         case TkFunc:
             // TODO: implement

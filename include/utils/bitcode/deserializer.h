@@ -113,6 +113,9 @@ private:
             else if (code == SymFunc && mod) {
                 deserializeFunc(mod, record);
             }
+            else if (code == SymStruct && mod) {
+                deserializeStruct(mod, record);
+            }
         }
     }
 
@@ -149,6 +152,24 @@ private:
 
         Function func(name, retType, args, access, storage, mod);
         mod->FuncOverloads[name.Name].Candidates.push_back(func);
+    }
+
+    void
+    deserializeStruct(Module *mod, llvm::SmallVector<uint64_t, 64> &record) {
+        llvm::SMLoc emptyLoc;
+        
+        NameObj name(_strPool[record[0]], emptyLoc, emptyLoc);
+        AccessModifier access = static_cast<AccessModifier>(record[1]);
+        Module *parent = _modules[record[2]];
+        int fieldsCount = record[3];
+        std::vector<Field> fields;
+        for (int i = 0; i < fieldsCount; ++i) {
+            NameObj fName(_strPool[record[4 + i * 4]], emptyLoc, emptyLoc);
+            Variable fVar(fName, _types[record[4 + i * 4 + 1]], false, static_cast<AccessModifier>(record[4 + i * 4 + 2]), Value::GetIncorrectValue());
+            fields.push_back(Field(fVar, static_cast<bool>(record[4 + i * 4 + 3]), fVar.Access));
+        }
+        Struct s(name, parent, fields, access);
+        mod->Structs.emplace(name.Name, s);
     }
 
     void

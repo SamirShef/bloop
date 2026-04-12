@@ -433,7 +433,7 @@ CodeGen::generateSIE(HIRStructInstanceExpr *sie) {
 llvm::Value *
 CodeGen::generateFE(HIRFieldExpr *fe) {
     llvm::Value *base = generateExpr(fe->GetBase());
-    return _builder.CreateExtractValue(base, fe->GetIndex());
+    return _builder.CreateExtractValue(base, fe->GetIndex(), base->getName() + "." + std::to_string(fe->GetIndex()));
 }
 
 llvm::Type *

@@ -13,6 +13,11 @@ struct Field {
     uint            RefsCount = 0;
 
     explicit Field(Variable v, bool is, AccessModifier a) : Var(v), IsStatic(is), Access(a) {}
+
+    bool
+    operator==(const Field &rhs) const {
+        return Var == rhs.Var && IsStatic == rhs.IsStatic && Access == rhs.Access;
+    }
 };
 
 struct Struct {
@@ -27,6 +32,11 @@ struct Struct {
 
     std::string
     GetMangledName() const;
+
+    bool
+    operator==(const Struct &rhs) const {
+        return Name.Name == rhs.Name.Name && Fields == rhs.Fields && Methods == rhs.Methods && Access == rhs.Access;
+    }
 };
 
 }
