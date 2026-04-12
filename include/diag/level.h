@@ -42,6 +42,9 @@ enum ErrorCode : uint8_t {
     ErrControlFlowOpOutsideLoop,
     ErrRecursiveType,
     ErrEmptyImportPath,
+    ErrInitStaticFieldInInitializer,
+    ErrAccessStaticFromInstance,
+    ErrAccessNonStaticFromType,
 };
 
 enum WarnCode : uint8_t {

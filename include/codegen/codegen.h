@@ -58,11 +58,17 @@ private:
     generateNode(HIRNode *node);
 
     llvm::Value *
+    generateLValue(HIRNode *node);
+
+    llvm::Value *
     generateVDS(HIRVarDeclStmt *vds);
 
     llvm::Value *
     generateVarStore(HIRVarStore *varStore);
 
+    llvm::Value *
+    generateFieldStore(HIRFieldStore *fieldStore);
+    
     void
     declareFDS(HIRFuncDeclStmt *fds);
 

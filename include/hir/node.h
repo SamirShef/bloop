@@ -10,6 +10,7 @@ enum HIRNodeKind : uint8_t {
     HIRNkUsingStmt,
     HIRNkRetStmt,
     HIRNkVarStore,
+    HIRNkFieldStore,
     HIRNkStructDeclStmt,
     HIRNkEndStmts,
     HIRNkCast,

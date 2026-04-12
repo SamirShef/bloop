@@ -149,6 +149,66 @@ Semantic::analyzeFAS(FieldAsgnStmt *fas) {
             .AddSpan(fas->GetName().Start, fas->GetName().End, "undeclared");
         return;
     }
+    else if (baseRes.Val.Type->IsStructPtr()) {
+        auto *st = baseRes.Val.Type->AsStructPtr();
+        auto &s = st->GetBaseMod()->Structs.at(st->GetName().Name);
+        auto it = std::find_if(s.Fields.begin(), s.Fields.end(), [&](const Field &f) {
+            return f.Var.Name.Name == fas->GetName().Name;
+        });
+        if (it == s.Fields.end()) {
+            _diag.Report(Error, "symbol '" + fas->GetName().Name + "' is undeclared in struct '" + s.Name.Name + "'")
+                .SetCode(ErrUndeclaredSymbol)
+                .AddSpan(fas->GetName().Start, fas->GetName().End, "undeclared");
+            return;
+        }
+        if (it->Access != Pub) {
+            _diag.Report(Error, "symbol '" + fas->GetName().Name + "' is private")
+                .SetCode(ErrPrivateSymbol)
+                .AddSpan(fas->GetName().Start, fas->GetName().End, "private symbol")
+                .AddHelp("consider using the 'pub' keyword to make field '" + fas->GetName().Name + "' accessible")
+                .AddHelp("consider using a public method or API instead");
+            return;
+        }
+        if (it->Var.IsConst) {
+            _diag.Report(Error, "reassignment of read-only field '" + it->Var.Name.Name + "'")
+                .SetCode(ErrReasgnConst)
+                .AddSpan(fas->GetStartLoc(), fas->GetEndLoc());
+        }
+        if (it->IsStatic && baseRes.Val.Kind != Value::TypeLit) {
+            _diag.Report(Error, "static field '" + fas->GetName().Name + "' cannot be accessed via an instance")
+                .SetCode(ErrAccessStaticFromInstance)
+                .AddSpan(fas->GetName().Start, fas->GetName().End, "static symbol")
+                .AddHelp("consider using the type name instead: '" + baseRes.Val.Type->ToString() + '.' + fas->GetName().Name + "'");
+            return;
+        }
+        else if (!it->IsStatic && baseRes.Val.Kind == Value::TypeLit) {
+            _diag.Report(Error, "non-static field '" + fas->GetName().Name + "' cannot be accessed via a type")
+                .SetCode(ErrAccessNonStaticFromType)
+                .AddSpan(fas->GetName().Start, fas->GetName().End, "non-static symbol")
+                .AddHelp("consider using an instance of '" + baseRes.Val.Type->ToString() + "' or making the field static");
+            return;
+        }
+
+        auto res = analyzeExpr(fas->GetExpr());
+        res = implicitlyCast(res, &it->Var.Type);
+        if (!it->IsStatic) {
+            int index = 0;
+            for (auto &f : s.Fields) {
+                if (f == *it) {
+                    break;
+                }
+                if (!f.IsStatic) {
+                    ++index;
+                }
+            }
+            
+            _builder.CreateStoreField(baseRes.HirNode, baseRes.Val.Type, index, res.HirNode);
+        }
+        else {
+            _builder.CreateStore(Static, _staticFields[s.GetMangledName() + "." + it->Var.Name.Name], res.HirNode);
+        }
+        return;
+    }
     _diag.Report(Error, "symbol '" + fas->GetName().Name + "' is undeclared")
         .SetCode(ErrUndeclaredSymbol)
         .AddSpan(fas->GetName().Start, fas->GetName().End, "undeclared");
@@ -525,6 +585,10 @@ Semantic::analyzeUS(UsingStmt *us) {
         for (auto &f : s.Fields) {
             resolveType(&f.Var.Type);
             fields.push_back(f.Var.Type);
+            if (f.IsStatic) {
+                _builder.CreateVar(s.GetMangledName() + "." + f.Var.Name.Name, f.Var.Type, nullptr, Extern);
+                _staticFields[s.GetMangledName() + "." + f.Var.Name.Name] = _builder.GetContext().GetGlobals().size() - 1;
+            }
         }
         _builder.CreateStruct(s.GetMangledName(), fields);
     }
@@ -696,10 +760,13 @@ Semantic::analyzeSDS(StructDeclStmt *sds) {
         }
         if (f.IsStatic) {
             _builder.CreateVar(_mod->ToString() + "." + sds->GetName().Name + "." + f.Name.Name, f.Type, defaultVal.HirNode, Static);
+            _staticFields[_mod->ToString() + "." + sds->GetName().Name + "." + f.Name.Name] = _builder.GetContext().GetGlobals().size() - 1;
         }
         fields.push_back(field);
         fieldsMap.emplace(f.Name.Name, &fields.back());
-        fieldsTypes.push_back(f.Type);
+        if (!f.IsStatic) {
+            fieldsTypes.push_back(f.Type);
+        }
     }
     
     auto *hirNode = _builder.CreateStruct(_mod->ToString() + "." + sds->GetName().Name, fieldsTypes);
@@ -889,6 +956,10 @@ Semantic::analyzeVE(VarExpr *ve) {
         }
         varsCopy.pop();
     }
+    if (auto it = _mod->Structs.find(ve->GetName().Name); it != _mod->Structs.end()) {
+        return { Value(Value::TypeLit, ValueData(), new StructType(ve->GetName(), _mod, ve->GetStartLoc(), ve->GetEndLoc()), ve->GetStartLoc(), ve->GetEndLoc()),
+                 nullptr };
+    }
     if (auto it = _mod->Submods.find(ve->GetName().Name); it != _mod->Submods.end()) {
         return { Value(Value::Unknown, ValueData(), new ModuleType(it->second, ve->GetName().Start, ve->GetName().End), ve->GetName().Start, ve->GetName().End),
                  nullptr };
@@ -955,8 +1026,12 @@ Semantic::analyzeFE(FieldExpr *fe) {
                     .AddHelp("consider using a public method or API instead");
                 return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
             }
-            HIRNode *veNode = _builder.CreateLoadVar(it->second.Storage, it->second.Index, mod);
+            HIRNode *veNode = _builder.CreateLoadVar(it->second.Storage, it->second.Index);
             return { Value(Value::Unknown, ValueData(), it->second.Type, fe->GetStartLoc(), fe->GetEndLoc()), veNode };
+        }
+        if (auto it = mod->Structs.find(fe->GetName().Name); it != mod->Structs.end()) {
+            return { Value(Value::TypeLit, ValueData(), new StructType(fe->GetName(), mod, fe->GetStartLoc(), fe->GetEndLoc()), fe->GetStartLoc(), fe->GetEndLoc()),
+                    nullptr };
         }
         if (auto it = mod->Submods.find(fe->GetName().Name); it != mod->Submods.end()) {
             if (it->second->Access != Pub) {
@@ -994,8 +1069,40 @@ Semantic::analyzeFE(FieldExpr *fe) {
                 .AddHelp("consider using a public method or API instead");
             return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
         }
+        if (it->IsStatic && baseRes.Val.Kind != Value::TypeLit) {
+            _diag.Report(Error, "static field '" + fe->GetName().Name + "' cannot be accessed via an instance")
+                .SetCode(ErrAccessStaticFromInstance)
+                .AddSpan(fe->GetName().Start, fe->GetName().End, "static symbol")
+                .AddHelp("consider using the type name instead: '" + baseRes.Val.Type->ToString() + '.' + fe->GetName().Name + "'");
+            return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+        }
+        else if (!it->IsStatic && baseRes.Val.Kind == Value::TypeLit) {
+            _diag.Report(Error, "non-static field '" + fe->GetName().Name + "' cannot be accessed via a type")
+                .SetCode(ErrAccessNonStaticFromType)
+                .AddSpan(fe->GetName().Start, fe->GetName().End, "non-static symbol")
+                .AddHelp("consider using an instance of '" + baseRes.Val.Type->ToString() + "' or making the field static");
+            return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+        }
+
+        HIRNode *hirNode = nullptr;
+        if (!it->IsStatic) {
+            int index = 0;
+            for (auto &f : s.Fields) {
+                if (f == *it) {
+                    break;
+                }
+                if (!f.IsStatic) {
+                    ++index;
+                }
+            }
+            
+            hirNode = _builder.CreateFieldExpr(baseRes.HirNode, baseRes.Val.Type, index);
+        }
+        else {
+            hirNode = _builder.CreateLoadVar(Static, _staticFields[s.GetMangledName() + "." + it->Var.Name.Name]);
+        }
         return { Value(Value::Unknown, ValueData(), it->Var.Type, fe->GetStartLoc(), fe->GetEndLoc()),
-                 _builder.CreateFieldExpr(baseRes.HirNode, it - s.Fields.begin()) };
+                 hirNode };
     }
     _diag.Report(Error, "symbol '" + fe->GetName().Name + "' is undeclared")
         .SetCode(ErrUndeclaredSymbol)
@@ -1068,6 +1175,7 @@ Semantic::analyzeSIE(StructInstanceExpr *sie) {
         return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
     }
     std::vector<std::pair<int, HIRNode *>> fields;
+    int index = 0;
     for (int i = 0; i < sie->GetFields().size(); ++i) {
         auto it = std::find_if(s->Fields.begin(), s->Fields.end(), [&](const Field &f) {
             return f.Var.Name.Name == sie->GetFields()[i].first.Name;
@@ -1085,10 +1193,19 @@ Semantic::analyzeSIE(StructInstanceExpr *sie) {
                 .AddSpan(sie->GetPath().front().Start, sie->GetPath().back().End);
             return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
         }
+        if (it->IsStatic) {
+            _diag.Report(Error, "cannot initialize static field '" + sie->GetFields()[i].first.Name + "' in a struct initializer")
+                .SetCode(ErrInitStaticFieldInInitializer)
+                .AddSpan(sie->GetFields()[i].first.Start, sie->GetFields()[i].first.End);
+            continue;
+        }
 
         auto res = analyzeExpr(sie->GetFields()[i].second);
         res = implicitlyCast(res, &it->Var.Type);
-        fields.push_back({ it - s->Fields.begin(), res.HirNode });
+        fields.push_back({ index, res.HirNode });
+        if (!it->IsStatic) {
+            ++index;
+        }
     }
     auto val = Value(Value::Const, ValueData(), new StructType(s->Name, s->Parent, sie->GetPath().front().Start, sie->GetPath().back().End),
                             sie->GetStartLoc(), sie->GetEndLoc());

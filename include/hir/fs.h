@@ -4,17 +4,18 @@
 
 namespace bloop {
 
-class HIRFieldExpr : public HIRNode {
+class HIRFieldStore : public HIRNode {
     HIRNode *_base;
     Type *_baseType;
     int _index;
+    HIRNode *_expr;
 
 public:
-    HIRFieldExpr(HIRNode *b, Type *bt, int i) : _base(b), _baseType(bt), _index(i), HIRNode(HIRNkFieldExpr) {}
+    HIRFieldStore(HIRNode *b, Type *bt, int i, HIRNode *e) : _base(b), _baseType(bt), _index(i), _expr(e), HIRNode(HIRNkFieldStore) {}
 
     static constexpr bool
     classof(const HIRNode *node) {
-        return node->GetKind() == HIRNkFieldExpr;
+        return node->GetKind() == HIRNkFieldStore;
     }
     
     HIRNode *
@@ -30,6 +31,11 @@ public:
     int
     GetIndex() const {
         return _index;
+    }
+
+    HIRNode *
+    GetExpr() const {
+        return _expr;
     }
 };
 

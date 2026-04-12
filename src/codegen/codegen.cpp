@@ -13,6 +13,7 @@ CodeGen::generateNode(HIRNode *node) {
     switch (node->GetKind()) {
         NODE(HIRNkVarDeclStmt, generateVDS, HIRVarDeclStmt);
         NODE(HIRNkVarStore, generateVarStore, HIRVarStore);
+        NODE(HIRNkFieldStore, generateFieldStore, HIRFieldStore);
         NODE(HIRNkFuncDeclStmt, generateFDS, HIRFuncDeclStmt);
         NODE(HIRNkFuncCallExpr, generateFCE, HIRFuncCallExpr);
         NODE(HIRNkRetStmt, generateRS, HIRRetStmt);
@@ -21,6 +22,31 @@ CodeGen::generateNode(HIRNode *node) {
         NODE(HIRNkStructDeclStmt, generateSDS, HIRStructDeclStmt);
     }
     #undef NODE
+}
+
+llvm::Value *
+CodeGen::generateLValue(HIRNode *node) {
+    switch (node->GetKind()) {
+        case HIRNkVarExpr: {
+            auto ve = static_cast<HIRVarExpr *>(node);
+            switch (ve->GetStorageKind()) {
+                case Static: {
+                    return _globals[ve->GetIndex()];
+                }
+                case Stack: {
+                    auto funcName = _builder.GetInsertBlock()->getParent()->getName().str();
+                    return _funcsMap.at(funcName).Locals[ve->GetIndex()];
+                }
+            }
+        }
+        case HIRNkFieldExpr: {
+            auto fe = static_cast<HIRFieldExpr *>(node);
+            llvm::Value *basePtr = generateLValue(fe->GetBase());
+            return _builder.CreateStructGEP(getType(fe->GetBaseType()), basePtr, fe->GetIndex());
+        }
+        default:
+            return nullptr;
+    }
 }
 
 llvm::Value *
@@ -69,6 +95,13 @@ CodeGen::generateVarStore(HIRVarStore *varStore) {
         }
     }
     return _builder.CreateStore(generateExpr(varStore->GetExpr()), ptr);
+}
+
+llvm::Value *
+CodeGen::generateFieldStore(HIRFieldStore *fieldStore) {
+    llvm::Value *base = generateLValue(fieldStore->GetBase());
+    llvm::Value *fieldPtr = _builder.CreateStructGEP(getType(fieldStore->GetBaseType()), base, fieldStore->GetIndex(), base->getName() + "." + std::to_string(fieldStore->GetIndex()) + ".gep");
+    return _builder.CreateStore(generateExpr(fieldStore->GetExpr()), fieldPtr);
 }
 
 void

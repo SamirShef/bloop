@@ -45,6 +45,8 @@ class Semantic {
     };
     std::stack<LoopFrame> _loops;
 
+    std::unordered_map<std::string, int> _staticFields; // <mangled name, index in globals>
+
 public:
     explicit Semantic(DiagnosticEngine &d, Module *&m, HIRContext &c, const std::unordered_map<std::string, FileNode> &g)
         : _diag(d), _mod(m), _builder(c), _graph(g) {

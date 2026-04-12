@@ -153,8 +153,8 @@ public:
     }
 
     HIRVarExpr *
-    CreateLoadVar(StorageKind kind, int index, Module *parent = nullptr) {
-        return _ctx.CreateNode<HIRVarExpr>(kind, index, parent);
+    CreateLoadVar(StorageKind kind, int index) {
+        return _ctx.CreateNode<HIRVarExpr>(kind, index);
     }
 
     HIRVarStore *
@@ -190,8 +190,15 @@ public:
     }
 
     HIRFieldExpr *
-    CreateFieldExpr(HIRNode *base, int index) {
-        return _ctx.CreateNode<HIRFieldExpr>(base, index);
+    CreateFieldExpr(HIRNode *base, Type *baseType, int index) {
+        return _ctx.CreateNode<HIRFieldExpr>(base, baseType, index);
+    }
+
+    HIRFieldStore *
+    CreateStoreField(HIRNode *base, Type *baseType, int index, HIRNode *expr) {
+        auto *node = _ctx.CreateNode<HIRFieldStore>(base, baseType, index, expr);
+        AddToBlock(node);
+        return node;
     }
 
     HIRNode *
