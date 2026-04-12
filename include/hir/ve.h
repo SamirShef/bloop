@@ -8,10 +8,9 @@ namespace bloop {
 class HIRVarExpr : public HIRNode {
     StorageKind _kind;
     int _index;
-    Module *_parent;
 
 public:
-    HIRVarExpr(StorageKind k, int i, Module *p = nullptr) : _kind(k), _index(i), _parent(p), HIRNode(HIRNkVarExpr) {}
+    HIRVarExpr(StorageKind k, int i) : _kind(k), _index(i), HIRNode(HIRNkVarExpr) {}
 
     static constexpr bool
     classof(const HIRNode *node) {
@@ -26,11 +25,6 @@ public:
     int
     GetIndex() const {
         return _index;
-    }
-
-    Module *
-    GetParentMod() const {
-        return _parent;
     }
 };
 

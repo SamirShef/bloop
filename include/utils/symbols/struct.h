@@ -2,7 +2,6 @@
 #include <utils/symbols/trait.h>
 #include <utils/symbols/access.h>
 #include <utils/symbols/variable.h>
-#include <string>
 #include <vector>
 
 namespace bloop {
@@ -14,16 +13,30 @@ struct Field {
     uint            RefsCount = 0;
 
     explicit Field(Variable v, bool is, AccessModifier a) : Var(v), IsStatic(is), Access(a) {}
+
+    bool
+    operator==(const Field &rhs) const {
+        return Var == rhs.Var && IsStatic == rhs.IsStatic && Access == rhs.Access;
+    }
 };
 
 struct Struct {
-    std::string         Name;
+    NameObj             Name;
+    Module             *Parent;
     std::vector<Field>  Fields;
     std::vector<Method> Methods {};
     AccessModifier      Access;
     uint                RefsCount = 0;
 
-    explicit Struct(std::string n, std::vector<Field> &f, AccessModifier a) : Name(n), Fields(f), Access(a) {}
+    explicit Struct(NameObj n, Module *p, std::vector<Field> &f, AccessModifier a) : Name(n), Parent(p), Fields(f), Access(a) {}
+
+    std::string
+    GetMangledName() const;
+
+    bool
+    operator==(const Struct &rhs) const {
+        return Name.Name == rhs.Name.Name && Fields == rhs.Fields && Methods == rhs.Methods && Access == rhs.Access;
+    }
 };
 
 }

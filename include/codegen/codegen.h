@@ -6,8 +6,9 @@
 namespace bloop {
 
 class CodeGen {
-    std::vector<HIRFuncDeclStmt *> &_hirFunctions;
+    std::vector<HIRStructDeclStmt *> &_hirStructs;
     std::vector<HIRVarDeclStmt *> &_hirGlobals;
+    std::vector<HIRFuncDeclStmt *> &_hirFunctions;
     llvm::LLVMContext _context;
     llvm::Module *_module;
     llvm::IRBuilder<> _builder;
@@ -24,11 +25,15 @@ class CodeGen {
     std::unordered_map<HIRBasicBlock *, llvm::BasicBlock *> _blockMap;
 
 public:
-    explicit CodeGen(std::string name, std::vector<HIRVarDeclStmt *> &g, std::vector<HIRFuncDeclStmt *> &f)
-        : _hirGlobals(g), _hirFunctions(f), _context(), _builder(_context), _module(new llvm::Module(name, _context)) {}
+    explicit CodeGen(std::string name, std::vector<HIRStructDeclStmt *> &s, std::vector<HIRVarDeclStmt *> &g, std::vector<HIRFuncDeclStmt *> &f)
+        : _hirStructs(s), _hirGlobals(g), _hirFunctions(f), _context(), _builder(_context), _module(new llvm::Module(name, _context)) {}
 
     llvm::Module *
     Generate() {
+        for (auto &s : _hirStructs) {
+            generateSDS(s);
+        }
+        
         for (auto &f : _hirFunctions) {
             declareFDS(f);
         }
@@ -53,11 +58,17 @@ private:
     generateNode(HIRNode *node);
 
     llvm::Value *
+    generateLValue(HIRNode *node);
+
+    llvm::Value *
     generateVDS(HIRVarDeclStmt *vds);
 
     llvm::Value *
     generateVarStore(HIRVarStore *varStore);
 
+    llvm::Value *
+    generateFieldStore(HIRFieldStore *fieldStore);
+    
     void
     declareFDS(HIRFuncDeclStmt *fds);
 
@@ -72,6 +83,9 @@ private:
     
     llvm::Value *
     generateBR(HIRBranch *br);
+
+    llvm::Value *
+    generateSDS(HIRStructDeclStmt *sds);
 
     void
     generateImplicitMain();
@@ -96,6 +110,12 @@ private:
 
     llvm::Value *
     generateFCE(HIRFuncCallExpr *fce);
+
+    llvm::Value *
+    generateSIE(HIRStructInstanceExpr *sie);
+
+    llvm::Value *
+    generateFE(HIRFieldExpr *fe);
     
     llvm::Type *
     getType(Type *type);

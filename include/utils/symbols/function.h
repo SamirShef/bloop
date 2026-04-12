@@ -23,6 +23,11 @@ struct Argument {
     Expr       *DefaultVal;
 
     explicit Argument(NameObj n, class Type *t, Expr *dv = nullptr) : Name(n), Type(t), DefaultVal(dv) {}
+
+    bool
+    operator==(const Argument &rhs) const {
+        return Name.Name == rhs.Name.Name && *Type == *rhs.Type;
+    }
 };
 
 struct Function {
@@ -43,10 +48,20 @@ struct Function {
     
     std::string
     GetMangledName() const;
+
+    bool
+    operator==(const Function &rhs) const {
+        return Name.Name == rhs.Name.Name && *RetType == *rhs.RetType && Args == rhs.Args && Access == rhs.Access && Storage == rhs.Storage;
+    }
 };
 
 struct FuncOverload {
     std::vector<Function> Candidates;
+
+    bool
+    operator==(const FuncOverload &rhs) const {
+        return Candidates == rhs.Candidates;
+    }
 };
 
 }

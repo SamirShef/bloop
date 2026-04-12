@@ -60,7 +60,7 @@ Compile(const std::unordered_map<std::string, FileNode> &graph, const std::files
         printer.Print(ast, Blue);
     }
 
-    CodeGen codegen(mod->Name, ctx.GetGlobals(), ctx.GetFunctions());
+    CodeGen codegen(mod->Name, ctx.GetStructs(), ctx.GetGlobals(), ctx.GetFunctions());
     llvm::Module *llvmMod = codegen.Generate();
 
     InitializeLLVMTargets();

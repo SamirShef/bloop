@@ -23,6 +23,19 @@ struct Module {
 
     explicit Module(std::string n, AccessModifier a, Module *p = nullptr) : Name(n), Access(a), Parent(p) {}
 
+    bool
+    operator==(const Module &rhs) const {
+        bool equals = Name == rhs.Name && Access == rhs.Access && Vars == rhs.Vars && FuncOverloads == rhs.FuncOverloads && Structs == rhs.Structs
+                   && Traits == rhs.Traits && Submods == rhs.Submods && Imports == rhs.Imports;
+        if (Parent && rhs.Parent) {
+            return *Parent == *rhs.Parent && equals;
+        }
+        else if (!Parent && !rhs.Parent) {
+            return equals;
+        }
+        return false;
+    }
+    
     std::string
     ToString() const {
         if (!Parent) {

@@ -11,6 +11,7 @@
 #include <ast/stmts/fls.h>
 #include <ast/stmts/bs.h>
 #include <ast/stmts/cs.h>
+#include <ast/stmts/sds.h>
 
 #include <ast/exprs/be.h>
 #include <ast/exprs/le.h>
@@ -19,3 +20,4 @@
 #include <ast/exprs/fe.h>
 #include <ast/exprs/fce.h>
 #include <ast/exprs/mce.h>
+#include <ast/exprs/sie.h>

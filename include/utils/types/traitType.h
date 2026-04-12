@@ -26,7 +26,7 @@ public:
 
     std::string
     ToString() override {
-        return "<trait " + _name.Name + '>';
+        return _name.Name;
     }
 };
 

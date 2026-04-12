@@ -12,7 +12,8 @@ struct Value {
     enum Kind : uint8_t {
         Unknown,
         Const,
-        Nil
+        Nil,
+        TypeLit
     } Kind;
     ValueData Data;
     class Type *Type;

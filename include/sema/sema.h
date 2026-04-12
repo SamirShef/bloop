@@ -22,6 +22,9 @@ class Semantic {
     struct SemanticResult {
         Value Val;
         HIRNode *HirNode;
+
+        SemanticResult() : Val(Value::GetIncorrectValue()), HirNode(nullptr) {}
+        SemanticResult(Value v, HIRNode *h) : Val(v), HirNode(h) {}
     };
 
     enum CastCost {
@@ -42,6 +45,8 @@ class Semantic {
     };
     std::stack<LoopFrame> _loops;
 
+    std::unordered_map<std::string, int> _staticFields; // <mangled name, index in globals>
+
 public:
     explicit Semantic(DiagnosticEngine &d, Module *&m, HIRContext &c, const std::unordered_map<std::string, FileNode> &g)
         : _diag(d), _mod(m), _builder(c), _graph(g) {
@@ -54,13 +59,22 @@ public:
             if (!s) {
                 continue;
             }
+            if (s->GetKind() == NkStructDeclStmt) {
+                analyzeSDS(llvm::cast<StructDeclStmt>(s));
+            }
+        }
+
+        for (auto &s : ast) {
+            if (!s) {
+                continue;
+            }
             if (s->GetKind() == NkFuncDeclStmt) {
                 registerFunc(llvm::cast<FuncDeclStmt>(s));
             }
         }
 
         for (auto &s : ast) {
-            if (!s) {
+            if (!s || s->GetKind() == NkStructDeclStmt) {
                 continue;
             }
             analyzeStmt(s);
@@ -121,6 +135,9 @@ private:
     void
     analyzeCS(ContinueStmt *cs);
 
+    void
+    analyzeSDS(StructDeclStmt *sds);
+
     SemanticResult
     analyzeExpr(Expr *expr);
 
@@ -144,6 +161,9 @@ private:
 
     SemanticResult
     analyzeMCE(MethodCallExpr *mce);
+
+    SemanticResult
+    analyzeSIE(StructInstanceExpr *sie);
 
     Variable *
     findGlobVar(std::string name) {
@@ -179,6 +199,53 @@ private:
             auto impIt = modPtr->Structs.find(name);
             if (impIt != modPtr->Structs.end() && impIt->second.Access == Pub) {
                 return &impIt->second;
+            }
+        }
+        return nullptr;
+    }
+
+    Struct *
+    findStructByPath(const std::vector<NameObj> &path) {
+        if (path.empty()) {
+            return nullptr;
+        }
+        if (path.size() == 1) {
+            return findStruct(path[0].Name);
+        }
+
+        Module *currentMod = nullptr;
+        if (_mod->Imports.count(path[0].Name)) {
+            currentMod = _mod->Imports[path[0].Name];
+        }
+        else if (_mod->Submods.count(path[0].Name)) {
+            currentMod = _mod->Submods[path[0].Name];
+        }
+        else {
+            return nullptr;
+        }
+
+        for (int i = 1; i < path.size() - 1; ++i) {
+            if (currentMod->Submods.count(path[i].Name)) {
+                currentMod = currentMod->Submods[path[i].Name];
+            }
+            else {
+                _diag.Report(Error, "symbol '" + path[i].Name + "' is undeclared in module '" + currentMod->ToString() + "'")
+                    .SetCode(ErrUndeclaredSymbol)
+                    .AddSpan(path[i].Start, path[i].End, "undeclared");
+                return nullptr;
+            }
+        }
+
+        if (currentMod->Structs.count(path.back().Name)) {
+            auto *s = &currentMod->Structs.at(path.back().Name);
+            if (s->Access == Pub) {
+                return s;
+            }
+            else {
+                _diag.Report(Error, "symbol '" + s->Name.Name + "' is private")
+                    .SetCode(ErrPrivateSymbol)
+                    .AddSpan(s->Name.Start, s->Name.End, "private symbol")
+                    .AddHelp("consider using the 'pub' keyword to make struct '" + s->Name.Name + "' accessible");
             }
         }
         return nullptr;

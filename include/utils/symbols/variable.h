@@ -20,6 +20,11 @@ struct Variable {
     
     explicit Variable(NameObj n, class Type *t, bool ic, AccessModifier a, Value v, StorageKind s = Static, int i = -1)
         : Name(n), Type(t), IsConst(ic), Access(a), Val(v), Storage(s), Index(i) {}
+
+    bool
+    operator==(const Variable &rhs) const {
+        return Name.Name == rhs.Name.Name && *Type == *rhs.Type && IsConst == rhs.IsConst && Access == rhs.Access && Storage == rhs.Storage && Index == rhs.Index;
+    }
 };
 
 }
