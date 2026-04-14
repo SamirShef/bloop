@@ -326,6 +326,7 @@ private:
 
     void
     serializeStructs(llvm::BitstreamWriter &w, const std::unordered_map<std::string, Struct> &structs) {
+        // TODO: add logic for serialize methods
         for (auto &[name, s] : structs) {
             llvm::SmallVector<uint64_t, 64> structRec = {
                 static_cast<uint64_t>(_strPool.GetID(name)),

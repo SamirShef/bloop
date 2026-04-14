@@ -13,3 +13,5 @@
 #include <hir/fce.h>
 #include <hir/sie.h>
 #include <hir/fe.h>
+#include <hir/deref.h>
+#include <hir/ref.h>

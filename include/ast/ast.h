@@ -12,6 +12,7 @@
 #include <ast/stmts/bs.h>
 #include <ast/stmts/cs.h>
 #include <ast/stmts/sds.h>
+#include <ast/stmts/is.h>
 
 #include <ast/exprs/be.h>
 #include <ast/exprs/le.h>

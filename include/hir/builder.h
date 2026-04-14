@@ -201,6 +201,16 @@ public:
         return node;
     }
 
+    HIRDeref *
+    CreateDereference(HIRNode *base, Type *baseType) {
+        return _ctx.CreateNode<HIRDeref>(base, baseType);
+    }
+
+    HIRRef *
+    CreateReference(HIRNode *base) {
+        return _ctx.CreateNode<HIRRef>(base);
+    }
+
     HIRNode *
     GetIncorrectValue() {
         return CreateLiteral(Value::GetIncorrectValue());

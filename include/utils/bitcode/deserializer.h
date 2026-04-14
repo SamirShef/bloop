@@ -156,6 +156,7 @@ private:
 
     void
     deserializeStruct(Module *mod, llvm::SmallVector<uint64_t, 64> &record) {
+        // TODO: add logic for deserialize methods
         llvm::SMLoc emptyLoc;
         
         NameObj name(_strPool[record[0]], emptyLoc, emptyLoc);

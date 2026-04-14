@@ -41,6 +41,7 @@ Semantic::analyzeStmt(Stmt *stmt) {
         NODE(NkBreakStmt, analyzeBS, BreakStmt);
         NODE(NkContinueStmt, analyzeCS, ContinueStmt);
         NODE(NkStructDeclStmt, analyzeSDS, StructDeclStmt);
+        NODE(NkImplStmt, analyzeIS, ImplStmt);
         default: {
             _diag.Report(Error, "compiler limitation: statement type is currently unimplemented")
                 .SetCode(ErrLimitation)
@@ -581,6 +582,7 @@ Semantic::analyzeUS(UsingStmt *us) {
         _builder.CreateVar(node->Mod->ToString() + "." + name, obj.Type, nullptr, Extern);
     }
     for (auto &[name, s] : node->Mod->Structs) {
+        // TODO: add declaration of methods
         std::vector<Type *> fields;
         for (auto &f : s.Fields) {
             resolveType(&f.Var.Type);
@@ -773,6 +775,227 @@ Semantic::analyzeSDS(StructDeclStmt *sds) {
     _mod->Structs.emplace(sds->GetName().Name, Struct(sds->GetName(), _mod, fields, sds->GetAccess()));
 }
 
+void
+Semantic::registerImplMethods(ImplStmt *is) {
+    Type *&type = is->GetStructType();
+    resolveType(&type);
+
+    if (is->GetTraitType()) {
+        _diag.Report(Error, "compiler limitation: trait implementations are currently unimplemented")
+            .SetCode(ErrLimitation)
+            .AddSpan(is->GetTraitType()->GetStartLoc(), is->GetTraitType()->GetEndLoc());
+        return;
+    }
+
+    if (!type->IsStructPtr()) {
+        _diag.Report(Error, "compiler limitation: implementations are currently restricted to struct types")
+            .SetCode(ErrLimitation)
+            .AddSpan(type->GetStartLoc(), type->GetEndLoc());
+        return;
+    }
+
+    StructType *sType = type->AsStructPtr();
+    Struct *s = &sType->GetBaseMod()->Structs.at(sType->GetName().Name);
+
+    for (auto &m : is->GetMethods()) {
+        registerMethod(s, &m);
+    }
+}
+
+void
+Semantic::registerMethod(Struct *s, ImplStmt::Method *method) {
+    std::string name = method->Name.Name;
+    MethodOverload *overload = nullptr;
+
+    for (auto &o : s->Methods) {
+        if (!o.Candidates.empty() && o.Candidates[0].Func.Name.Name == name) {
+            overload = &o;
+            break;
+        }
+    }
+
+    if (overload) {
+        for (auto &m : overload->Candidates) {
+            if (m.Func.Name.Name != name) {
+                continue;
+            }
+            
+            int coincidences = 0;
+            if (m.Func.Args.size() == method->Args.size()) {
+                for (int i = 0; i < m.Func.Args.size(); ++i) {
+                    resolveType(&m.Func.Args[i].Type);
+                    Type *fdsArgType = method->Args[i].Type;
+                    resolveType(&fdsArgType);
+                    if (*m.Func.Args[i].Type == *fdsArgType) {
+                        ++coincidences;
+                    }
+                }
+            }
+            
+            if (coincidences == method->Args.size()) {
+                std::stringstream ss;
+                ss << '(';
+                for (int i = 0; i < method->Args.size(); ++i) {
+                    ss << method->Args[i].Type->ToString();
+                    if (i < method->Args.size() - 1) {
+                        ss << ", ";
+                    }
+                }
+                ss << ')';
+                
+                _diag.Report(Error, "redefinition of method '" + name + ss.str() + "' in struct '" + s->Name.Name + "'")
+                    .SetCode(ErrRedefinition)
+                    .AddSpan(m.Func.Name.Start, m.Func.Name.End, "previous definition is here")
+                    .AddSpan(method->Name.Start, method->Name.End, "redefinition here");
+                return;
+            }
+        }
+    }
+    else {
+        s->Methods.push_back(MethodOverload());
+        overload = &s->Methods.back();
+    }
+
+    Function func(method->Name, method->RetType, method->Args, method->Access, Static, s->Parent);
+    func.ASTNode = nullptr;
+    func.Status = NotAnalyzed;
+    
+    overload->Candidates.push_back(Method(func, method->IsStatic, method->Access));
+}
+
+void
+Semantic::resolveMethodSignature(Struct *s, Method *method, ImplStmt::Method *methodObj) {
+    Function *func = &method->Func;
+    if (func->Status == AnalysisStatus::SignatureReady || func->Status == AnalysisStatus::BodyAnalyzed) {
+        return;
+    }
+    
+    func->Status = ResolvingSig;
+    resolveType(&methodObj->RetType);
+    func->RetType = methodObj->RetType;
+
+    for (int i = 0; i < methodObj->Args.size(); ++i) {
+        auto &a = methodObj->Args[i];
+        resolveType(&a.Type);
+        func->Args[i].Type = a.Type;
+    }
+
+    std::string mangledName = s->Parent->ToString() + "." + s->Name.Name + "." + func->Name.Name;
+    std::vector<HIRFuncArgument> hirArgs;
+    if (!method->IsStatic) {
+        Type *t = new PointerType(new StructType(s->Name, s->Parent, llvm::SMLoc(), llvm::SMLoc()), llvm::SMLoc(), llvm::SMLoc());
+        hirArgs.push_back(HIRFuncArgument("this", t, nullptr));
+    }
+    for (auto &a : func->Args) {
+        hirArgs.push_back(HIRFuncArgument(a.Name.Name, a.Type, nullptr));
+        mangledName += a.Type->ToString();
+    }
+    
+    func->HirNode = static_cast<HIRFuncDeclStmt *>(_builder.CreateFunc(mangledName, func->RetType, hirArgs, false));
+    func->Status = SignatureReady;
+}
+
+void
+Semantic::analyzeMethodBody(Struct *s, Method *method, ImplStmt::Method *methodObj) {
+    Function *func = &method->Func;
+
+    if (func->Status == BodyAnalyzed) {
+        return;
+    }
+
+    resolveMethodSignature(s, method, methodObj);
+
+    unsigned oldVarCount = _currentFuncVarCount;
+    _currentFuncVarCount = 0;
+    _funcsRetTypes.push(func->RetType);
+    _vars.push({});
+
+    if (!method->IsStatic) {
+        NameObj name("this", methodObj->Name.Start, methodObj->Name.End);
+        Type *t = new StructType(s->Name, s->Parent, llvm::SMLoc(), llvm::SMLoc());
+        createVar("this", Variable(name, t, false, Priv, Value(Value::This, ValueData(), t, llvm::SMLoc(), llvm::SMLoc()), Parameter, _currentFuncVarCount++));
+    }
+    for (int i = 0; i < func->Args.size(); ++i) {
+        auto &a = func->Args[i];
+        createVar(a.Name.Name, Variable(a.Name, a.Type, false, Priv, Value::GetIncorrectValue(), Parameter, _currentFuncVarCount++));
+    }
+
+    auto *entry = _builder.CreateBlock(func->HirNode, "entry");
+    _builder.SetInsertPoint(entry);
+
+    bool hasRet = false;
+    for (auto &stmt : methodObj->Body) {
+        if (stmt->GetKind() == NkRetStmt) {
+            hasRet = true;
+        }
+        analyzeStmt(stmt);
+    }
+
+    _vars.pop();
+    _currentFuncVarCount = oldVarCount;
+    func->RetType = methodObj->RetType;
+    func->HirNode->GetRetType() = methodObj->RetType;
+
+    if (!hasRet && methodObj->RetType && !methodObj->RetType->IsNothType()) {
+        _diag.Report(Error, "method must return a value in all execution paths")
+            .SetCode(ErrHasntRet)
+            .AddSpan(methodObj->Name.Start, methodObj->Name.End);
+    }
+    else if (!hasRet && (!methodObj->RetType || methodObj->RetType->IsNothType())) {
+        _builder.CreateRet(new NothType(llvm::SMLoc(), llvm::SMLoc()), nullptr);
+    }
+    
+    func->Status = BodyAnalyzed;
+    _funcsRetTypes.pop();
+}
+
+void
+Semantic::analyzeIS(ImplStmt *is) {
+    Type *type = is->GetStructType();
+    StructType *sType = type->AsStructPtr(); 
+    Struct *s = &sType->GetBaseMod()->Structs.at(sType->GetName().Name); 
+    
+    if (is->GetTraitType()) {
+        _diag.Report(Error, "compiler limitation: trait implementations are currently unimplemented")
+            .SetCode(ErrLimitation)
+            .AddSpan(is->GetTraitType()->GetStartLoc(), is->GetTraitType()->GetEndLoc());
+        return;
+    }
+
+    for (int i = 0; i < is->GetMethods().size(); ++i) {
+        ImplStmt::Method *method = &is->GetMethods()[i];
+        MethodOverload *overload = nullptr;
+        
+        for (auto &o : s->Methods) {
+            if (!o.Candidates.empty() && o.Candidates[0].Func.Name.Name == method->Name.Name) {
+                overload = &o;
+                break;
+            }
+        }
+        
+        if (overload) {
+            auto it = std::find_if(overload->Candidates.begin(), overload->Candidates.end(), [&](const Method &m) {
+                if (m.Func.Name.Name != method->Name.Name) {
+                    return false;
+                }
+                if (m.Func.Args.size() != method->Args.size()) {
+                    return false;
+                }
+                for (int j = 0; j < m.Func.Args.size(); ++j) {
+                    if (*m.Func.Args[j].Type != *method->Args[j].Type) {
+                        return false; 
+                    }
+                }
+                return true;
+            });
+
+            if (it != overload->Candidates.end()) {
+                analyzeMethodBody(s, &(*it), method);
+            }
+        }
+    }
+}
+
 Semantic::SemanticResult
 Semantic::analyzeExpr(Expr *expr) {
     #define NODE(k, f, t) case k: return f(llvm::cast<t>(expr));
@@ -952,7 +1175,7 @@ Semantic::analyzeVE(VarExpr *ve) {
                 return { it->second.Val, _builder.CreateLiteral(it->second.Val) };
             }
             HIRNode *veNode = _builder.CreateLoadVar(it->second.Storage, it->second.Index);
-            return { Value(Value::Unknown, ValueData(), it->second.Type, ve->GetStartLoc(), ve->GetEndLoc()), veNode };
+            return { Value(it->second.Val.Kind, ValueData(), it->second.Type, ve->GetStartLoc(), ve->GetEndLoc()), veNode };
         }
         varsCopy.pop();
     }
@@ -1050,6 +1273,7 @@ Semantic::analyzeFE(FieldExpr *fe) {
         return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
     }
     else if (baseRes.Val.Type->IsStructPtr()) {
+        bool baseIsThis = baseRes.Val.Kind == Value::This;
         auto *st = baseRes.Val.Type->AsStructPtr();
         auto &s = st->GetBaseMod()->Structs.at(st->GetName().Name);
         auto it = std::find_if(s.Fields.begin(), s.Fields.end(), [&](const Field &f) {
@@ -1061,7 +1285,7 @@ Semantic::analyzeFE(FieldExpr *fe) {
                 .AddSpan(fe->GetName().Start, fe->GetName().End, "undeclared");
             return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
         }
-        if (it->Access != Pub) {
+        if (it->Access != Pub && !baseIsThis) {
             _diag.Report(Error, "symbol '" + fe->GetName().Name + "' is private")
                 .SetCode(ErrPrivateSymbol)
                 .AddSpan(fe->GetName().Start, fe->GetName().End, "private symbol")
@@ -1095,7 +1319,9 @@ Semantic::analyzeFE(FieldExpr *fe) {
                     ++index;
                 }
             }
-            
+            if (baseIsThis) {
+                baseRes.HirNode = _builder.CreateDereference(baseRes.HirNode, baseRes.Val.Type);
+            }
             hirNode = _builder.CreateFieldExpr(baseRes.HirNode, baseRes.Val.Type, index);
         }
         else {
@@ -1152,6 +1378,114 @@ Semantic::analyzeMCE(MethodCallExpr *mce) {
             .SetCode(ErrUndeclaredSymbol)
             .AddSpan(mce->GetName().Start, mce->GetName().End, "undeclared");
         return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+    }
+    else if (baseRes.Val.Type->IsStructPtr()) {
+        bool baseIsThis = baseRes.Val.Kind == Value::This;
+        auto *st = baseRes.Val.Type->AsStructPtr();
+        auto &s = st->GetBaseMod()->Structs.at(st->GetName().Name);
+        std::string methodName = mce->GetName().Name;
+
+        MethodOverload *candidates = nullptr;
+        for (auto &o : s.Methods) {
+            if (!o.Candidates.empty() && o.Candidates[0].Func.Name.Name == methodName) {
+                candidates = &o;
+                break;
+            }
+        }
+
+        if (!candidates) {
+            _diag.Report(Error, "struct '" + s.Name.Name + "' has no method named '" + methodName + "'")
+                .SetCode(ErrUndeclaredSymbol)
+                .AddSpan(mce->GetName().Start, mce->GetName().End);
+            return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+        }
+
+        std::vector<Type *> argTypes;
+        std::vector<SemanticResult> argResults;
+        
+        for (auto &a : mce->GetArgs()) {
+            auto argRes = analyzeExpr(a);
+            argResults.push_back(argRes);
+            argTypes.push_back(argRes.Val.Type);
+        }
+
+        std::vector<std::pair<Method *, int>> viableCandidates;
+        for (auto &cand : candidates->Candidates) {
+            if (cand.Func.Args.size() != argTypes.size()) {
+                continue;
+            }
+
+            bool viable = true;
+            int costSum = 0;
+            for (int i = 0; i < argTypes.size(); ++i) {
+                CastCost cost = checkCastCost(argTypes[i], cand.Func.Args[i].Type);
+                if (cost == Incompatible) {
+                    viable = false;
+                    break;
+                }
+                costSum += cost;
+            }
+
+            if (viable) {
+                viableCandidates.push_back({ &cand, costSum });
+            }
+        }
+
+        if (viableCandidates.empty()) {
+            _diag.Report(Error, "no matching method for call")
+                .SetCode(ErrNoMatchingFunction)
+                .AddSpan(mce->GetStartLoc(), mce->GetEndLoc());
+            return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+        }
+
+        Method *bestMethod = viableCandidates[0].first;
+        int minCost = viableCandidates[0].second;
+        bool isAmbiguous = false;
+
+        for (int i = 1; i < viableCandidates.size(); ++i) {
+            if (viableCandidates[i].second < minCost) {
+                minCost = viableCandidates[i].second;
+                bestMethod = viableCandidates[i].first;
+                isAmbiguous = false;
+            }
+            else if (viableCandidates[i].second == minCost) {
+                isAmbiguous = true;
+            }
+        }
+
+        if (isAmbiguous) {
+            _diag.Report(Error, "method call is ambiguous")
+                .SetCode(ErrAmbiguousCall)
+                .AddSpan(mce->GetStartLoc(), mce->GetEndLoc());
+            return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+        }
+
+        if (bestMethod->Access != Pub && !baseIsThis) {
+            _diag.Report(Error, "symbol '" + methodName + "' is private")
+                .SetCode(ErrPrivateSymbol)
+                .AddSpan(mce->GetName().Start, mce->GetName().End, "private symbol")
+                .AddHelp("consider using the 'pub' keyword to make method '" + methodName + "' accessible");
+            return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+        }
+
+        std::vector<HIRNode *> hirArgs;
+        if (!bestMethod->IsStatic) {
+            if (baseIsThis) {
+                hirArgs.push_back(baseRes.HirNode);
+            }
+            else {
+                hirArgs.push_back(_builder.CreateReference(baseRes.HirNode));
+            }
+        }
+        std::string mangledName = s.GetMangledName() + "." + bestMethod->Func.Name.Name;
+        for (int i = 0; i < argResults.size(); ++i) {
+            auto res = implicitlyCast(argResults[i], &bestMethod->Func.Args[i].Type);
+            hirArgs.push_back(res.HirNode);
+            mangledName += res.Val.Type->ToString();
+        }
+
+        return { Value(Value::Unknown, ValueData(), bestMethod->Func.RetType, mce->GetStartLoc(), mce->GetEndLoc()),
+                 _builder.CreateCall(mangledName, hirArgs) };
     }
     _diag.Report(Error, "symbol '" + mce->GetName().Name + "' is undeclared")
         .SetCode(ErrUndeclaredSymbol)

@@ -21,12 +21,12 @@ struct Field {
 };
 
 struct Struct {
-    NameObj             Name;
-    Module             *Parent;
-    std::vector<Field>  Fields;
-    std::vector<Method> Methods {};
-    AccessModifier      Access;
-    uint                RefsCount = 0;
+    NameObj                     Name;
+    Module                     *Parent;
+    std::vector<Field>          Fields;
+    std::vector<MethodOverload> Methods {};
+    AccessModifier              Access;
+    uint                        RefsCount = 0;
 
     explicit Struct(NameObj n, Module *p, std::vector<Field> &f, AccessModifier a) : Name(n), Parent(p), Fields(f), Access(a) {}
 

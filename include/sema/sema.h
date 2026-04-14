@@ -71,6 +71,9 @@ public:
             if (s->GetKind() == NkFuncDeclStmt) {
                 registerFunc(llvm::cast<FuncDeclStmt>(s));
             }
+            else if (s->GetKind() == NkImplStmt) {
+                registerImplMethods(llvm::cast<ImplStmt>(s));
+            }
         }
 
         for (auto &s : ast) {
@@ -137,6 +140,21 @@ private:
 
     void
     analyzeSDS(StructDeclStmt *sds);
+
+    void
+    registerImplMethods(ImplStmt *is);
+
+    void
+    registerMethod(Struct *s, ImplStmt::Method *method);
+
+    void
+    resolveMethodSignature(Struct *s, Method *method, ImplStmt::Method *methodObj);
+
+    void
+    analyzeMethodBody(Struct *s, Method *method, ImplStmt::Method *methodObj);
+
+    void
+    analyzeIS(ImplStmt *is);
 
     SemanticResult
     analyzeExpr(Expr *expr);
