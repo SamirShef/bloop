@@ -37,7 +37,8 @@ enum RecordIDs {
     SymVar,
     SymFunc,
     SymStruct,
-    SymTrait
+    SymTrait,
+    SymPrimMethod
 };
 
 class Serializer {
@@ -179,6 +180,19 @@ private:
                 }
             }
         }
+        for (auto &[type, overloads] : mod->PrimitivesMethods) {
+            _typesPool.GetID(type);
+            for (auto &overload : overloads) {
+                for (auto &m : overload.Candidates) {
+                    _strPool.GetID(m.Func.Name.Name);
+                    _typesPool.GetID(m.Func.RetType);
+                    _modPool.GetID(m.Func.Parent);
+                    for (auto &a : m.Func.Args) {
+                        _typesPool.GetID(a.Type);
+                    }
+                }
+            }
+        }
         for (auto &[name, mod] : mod->Imports) {
             collectStringsAndTypes(mod);
         }
@@ -288,6 +302,7 @@ private:
         serializeVars(w, mod->Vars);
         serializeFuncs(w, mod->FuncOverloads);
         serializeStructs(w, mod->Structs);
+        serializePrimitiveMethods(w, mod->PrimitivesMethods);
 
         for (auto &[name, mod] : mod->Imports) {
             serializeModule(w, mod);
@@ -365,6 +380,34 @@ private:
                 }
             }
             w.EmitRecord(SymStruct, structRec);
+        }
+    }
+
+    void
+    serializePrimitiveMethods(llvm::BitstreamWriter &w, const std::unordered_map<Type *, std::vector<MethodOverload>> &methods) {
+        for (auto &[type, overloads] : methods) {
+            llvm::SmallVector<uint64_t, 64> record = {
+                static_cast<uint64_t>(_typesPool.GetID(type)),
+                static_cast<uint64_t>(overloads.size())
+            };
+
+            for (auto &overload : overloads) {
+                record.push_back(static_cast<uint64_t>(overload.Candidates.size()));
+                for (auto &m : overload.Candidates) {
+                    record.push_back(static_cast<uint64_t>(m.IsStatic));
+                    record.push_back(static_cast<uint64_t>(m.Access));
+                    record.push_back(static_cast<uint64_t>(_strPool.GetID(m.Func.Name.Name)));
+                    record.push_back(static_cast<uint64_t>(_typesPool.GetID(m.Func.RetType)));
+                    record.push_back(static_cast<uint64_t>(m.Func.Storage));
+                    record.push_back(static_cast<uint64_t>(_modPool.GetID(m.Func.Parent)));
+                    
+                    record.push_back(static_cast<uint64_t>(m.Func.Args.size()));
+                    for (auto &a : m.Func.Args) {
+                        record.push_back(static_cast<uint64_t>(_typesPool.GetID(a.Type)));
+                    }
+                }
+            }
+            w.EmitRecord(SymPrimMethod, record);
         }
     }
 };

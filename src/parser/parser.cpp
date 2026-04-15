@@ -450,6 +450,7 @@ Parser::parseStructMethod() {
 Expr *
 Parser::parsePrefixExpr(bool allowStruct) {
     const Token tok = advance();
+    Expr *base = nullptr;
     switch (tok.Kind) {
         #define LIT(t, v) createNode<LiteralExpr>(Value(Value::Const, ValueData(v), new t, tok.Start, tok.End))
         #define INT_LIT(bw, iu) LIT(IntegerType(bw, iu, tok.Start, tok.End), (int64_t)stoll(tok.Val))
@@ -457,35 +458,50 @@ Parser::parsePrefixExpr(bool allowStruct) {
         #define SIZE_LIT(iu) LIT(SizeType(iu, tok.Start, tok.End), (int64_t)stoll(tok.Val))
 
         case TkBoolLit:
-            return LIT(IntegerType(1, false, tok.Start, tok.End), (int64_t)(tok.Val == "true"));
+            base = LIT(IntegerType(1, false, tok.Start, tok.End), (int64_t)(tok.Val == "true"));
+            break;
         case TkCharLit:
-            return LIT(CharType(tok.Start, tok.End), tok.Val);
+            base = LIT(CharType(tok.Start, tok.End), tok.Val);
+            break;
         case TkI16Lit:
-            return INT_LIT(16, false);
+            base = INT_LIT(16, false);
+            break;
         case TkI32Lit:
-            return INT_LIT(32, false);
+            base = INT_LIT(32, false);
+            break;
         case TkI64Lit:
-            return INT_LIT(64, false);
+            base = INT_LIT(64, false);
+            break;
         case TkI128Lit:
-            return INT_LIT(128, false);
+            base = INT_LIT(128, false);
+            break;
         case TkISizeLit:
-            return SIZE_LIT(false);
+            base = SIZE_LIT(false);
+            break;
         case TkU16Lit:
-            return INT_LIT(16, true);
+            base = INT_LIT(16, true);
+            break;
         case TkU32Lit:
-            return INT_LIT(32, true);
+            base = INT_LIT(32, true);
+            break;
         case TkU64Lit:
-            return INT_LIT(64, true);
+            base = INT_LIT(64, true);
+            break;
         case TkU128Lit:
-            return INT_LIT(128, true);
+            base = INT_LIT(128, true);
+            break;
         case TkUSizeLit:
-            return SIZE_LIT(true);
+            base = SIZE_LIT(true);
+            break;
         case TkF32Lit:
-            return FLOAT_LIT(Float);
+            base = FLOAT_LIT(Float);
+            break;
         case TkF64Lit:
-            return FLOAT_LIT(Double);
+            base = FLOAT_LIT(Double);
+            break;
         case TkStrLit:
-            return LIT(StringType(tok.Start, tok.End), tok.Val);
+            base = LIT(StringType(tok.Start, tok.End), tok.Val);
+            break;
         
         #undef SIZE_LIT
         #undef FLOAT_LIT
@@ -494,7 +510,8 @@ Parser::parsePrefixExpr(bool allowStruct) {
         
         case TkMinus:
         case TkBang: {
-            return createNode<UnaryExpr>(tok, parsePrefixExpr(allowStruct), tok.Start, peek(-1).End);
+            base = createNode<UnaryExpr>(tok, parsePrefixExpr(allowStruct), tok.Start, peek(-1).End);
+            break;
         }
         case TkId: {
             std::vector<NameObj> path;
@@ -548,51 +565,11 @@ Parser::parsePrefixExpr(bool allowStruct) {
             }
             return expr;
         }
-
-        /* case TkId: {
-            if (peek().Kind == TkDot) {
-                Expr *expr = createNode<VarExpr>(tok);
-                return parseChain(expr);
-            }
-            else if (expect(TkLParen)) {
-                std::vector<Expr *> args;
-                parseArgsInto(args);
-                return createNode<FuncCallExpr>(tok, args, peek(-1).End);
-            }
-            else if (allowStruct && expect(TkLBrace)) {
-                std::vector<std::pair<NameObj, Expr *>> fields;
-                while (!expect(TkRBrace)) {
-                    const Token nameTok = advance();
-                    if (nameTok.Kind != TkId) {
-                        _diag.Report(Error, "expected identifier")
-                            .SetCode(ErrExpectedId)
-                            .AddSpan(nameTok.Start, nameTok.End);
-                    }
-                    NameObj name = nameTok;
-                    if (!expect(TkColon)) {
-                        _diag.Report(Error, "expected ':'")
-                            .SetCode(ErrExpectedToken)
-                            .AddSpan(peek().Start, peek().End);
-                    }
-                    Expr *expr = parseExpr();
-                    if (peek().Kind != TkRBrace) {
-                        if (!expect(TkComma)) {
-                            _diag.Report(Error, "expected ','")
-                                .SetCode(ErrExpectedToken)
-                                .AddSpan(peek().Start, peek().End);
-                        }
-                    }
-                    fields.push_back({ name, expr });
-                }
-                return createNode<StructInstanceExpr>(tok, fields, peek(-1).End);
-            }
-            return createNode<VarExpr>(tok);
-        } */
     }
-    _diag.Report(Error, "expected expression")
-        .SetCode(ErrExpectedExpr)
-        .AddSpan(tok.Start, tok.End);
-    return nullptr;
+    while (peek().Kind == TkDot || peek().Kind == TkLParen) {
+        base = parseChain(base); 
+    }
+    return base;
 }
 
 Expr *
