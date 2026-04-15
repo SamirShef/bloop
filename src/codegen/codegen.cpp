@@ -37,6 +37,16 @@ CodeGen::generateLValue(HIRNode *node) {
                     auto funcName = _builder.GetInsertBlock()->getParent()->getName().str();
                     return _funcsMap.at(funcName).Locals[ve->GetIndex()];
                 }
+                case Parameter: {
+                    auto *arg = _builder.GetInsertBlock()->getParent()->arg_begin() + ve->GetIndex();
+                    if (arg->getType()->isPointerTy()) {
+                        return arg;
+                    }
+                    else {
+                        auto *alloca = _builder.CreateAlloca(arg->getType(), nullptr, arg->getName() + ".alloca");
+                        return alloca;
+                    }
+                }
             }
         }
         case HIRNkFieldExpr: {
@@ -232,6 +242,13 @@ CodeGen::generateExpr(HIRNode *expr) {
         NODE(HIRNkFieldExpr, generateFE, HIRFieldExpr);
         NODE(HIRNkDeref, generateDeref, HIRDeref);
         NODE(HIRNkRef, generateRef, HIRRef);
+
+        case HIRNkVarDeclStmt: {
+            auto vds = llvm::cast<HIRVarDeclStmt>(expr);
+            auto var = _builder.CreateAlloca(getType(vds->GetType()), nullptr, vds->GetName());
+            _builder.CreateStore(generateExpr(vds->GetExpr()), var);
+            return var;
+        }
     }
     #undef NODE
 }

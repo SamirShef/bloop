@@ -22,7 +22,9 @@ struct Value {
     llvm::SMLoc Start;
     llvm::SMLoc End;
 
-    explicit Value(enum Kind k, ValueData d, class Type *t, llvm::SMLoc s, llvm::SMLoc e) : Kind(k), Data(d), Type(t), Start(s), End(e) {}
+    bool IsLValue;
+
+    explicit Value(enum Kind k, ValueData d, class Type *t, llvm::SMLoc s, llvm::SMLoc e, bool ilv = false) : Kind(k), Data(d), Type(t), Start(s), End(e), IsLValue(ilv) {}
 
     bool
     IsUnknown() const {

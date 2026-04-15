@@ -130,6 +130,9 @@ private:
             else if (code == SymStruct && mod) {
                 deserializeStruct(mod, record);
             }
+            else if (code == SymPrimMethod && mod) {
+                deserializePrimitiveMethods(mod, record);
+            }
         }
     }
 
@@ -220,6 +223,46 @@ private:
         Struct s(name, parent, fields, access);
         s.Methods = methods;
         mod->Structs.emplace(name.Name, s);
+    }
+
+    void
+    deserializePrimitiveMethods(Module *mod, llvm::SmallVector<uint64_t, 64> &record) {
+        llvm::SMLoc emptyLoc;
+        
+        Type *primType = _types[record[0]];
+        int overloadsCount = static_cast<int>(record[1]);
+        
+        std::vector<MethodOverload> overloads;
+        
+        int idx = 2;
+        for (int i = 0; i < overloadsCount; ++i) {
+            MethodOverload overload;
+            int candidatesCount = record[idx++];
+            
+            for (int j = 0; j < candidatesCount; ++j) {
+                bool isStatic = static_cast<bool>(record[idx++]);
+                AccessModifier access = static_cast<AccessModifier>(record[idx++]);
+                
+                NameObj funcName(_strPool[record[idx++]], emptyLoc, emptyLoc);
+                Type *retType = _types[record[idx++]];
+                StorageKind funcStorage = static_cast<StorageKind>(record[idx++]);
+                Module *parent = _modules[record[idx++]];
+                
+                int argsCount = static_cast<int>(record[idx++]);
+                std::vector<Argument> args;
+                for (int k = 0; k < argsCount; ++k) {
+                    NameObj argName("", emptyLoc, emptyLoc);
+                    Type *argType = _types[record[idx++]];
+                    args.push_back(Argument(argName, argType));
+                }
+                
+                Function func(funcName, retType, args, access, funcStorage, parent);
+                overload.Candidates.push_back(Method(func, isStatic, access));
+            }
+            overloads.push_back(overload);
+        }
+        
+        mod->PrimitivesMethods[primType] = std::move(overloads);
     }
 
     void

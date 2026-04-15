@@ -8,7 +8,8 @@
 
 namespace bloop {
 
-#define HASH(t, n) std::unordered_map<std::string, t> n;
+#define HASH_DEF(k, t, n) std::unordered_map<k, t> n;
+#define HASH(t, n) HASH_DEF(std::string, t, n);
 
 struct Module {
     std::string         Name;
@@ -20,6 +21,7 @@ struct Module {
     HASH(Trait,         Traits);
     HASH(Module *,      Submods);
     HASH(Module *,      Imports);
+    HASH_DEF(Type *, std::vector<MethodOverload>, PrimitivesMethods);
 
     explicit Module(std::string n, AccessModifier a, Module *p = nullptr) : Name(n), Access(a), Parent(p) {}
 

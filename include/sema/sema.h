@@ -163,6 +163,15 @@ private:
     analyzeMethodBody(Struct *s, Method *method, ImplStmt::Method *methodObj);
 
     void
+    registerPrimitiveMethod(Type *type, ImplStmt::Method *method);
+
+    void
+    resolvePrimitiveMethodSignature(Type *type, Method *method, ImplStmt::Method *methodObj);
+
+    void
+    analyzePrimitiveMethodBody(Type *type, Method *method, ImplStmt::Method *methodObj);
+
+    void
     analyzeIS(ImplStmt *is);
 
     SemanticResult
@@ -288,6 +297,31 @@ private:
             auto impIt = modPtr->Traits.find(name);
             if (impIt != modPtr->Traits.end() && impIt->second.Access == Pub) {
                 return &impIt->second;
+            }
+        }
+        return nullptr;
+    }
+
+    MethodOverload *
+    findPrimitiveMethodCandidates(Type *type, std::string name) {
+        for (auto &[t, methods] : _mod->PrimitivesMethods) {
+            if (*t == *type) {
+                for (auto &m : methods) {
+                    if (!m.Candidates.empty() && m.Candidates[0].Func.Name.Name == name) {
+                        return &m;
+                    }
+                }
+            }
+        }
+        for (auto &[modName, modPtr] : _mod->Imports) {
+            for (auto &[t, methods] : modPtr->PrimitivesMethods) {
+                if (*t == *type) {
+                    for (auto &m : methods) {
+                        if (!m.Candidates.empty() && m.Candidates[0].Func.Name.Name == name && m.Candidates[0].Access == Pub) {
+                            return &m;
+                        }
+                    }
+                }
             }
         }
         return nullptr;
