@@ -5,6 +5,8 @@
 
 namespace bloop {
 
+static Struct *analyzingMethodOfStruct = nullptr;
+
 static bool
 isComparisonOp(TokenKind kind) {
     switch (kind) {
@@ -371,7 +373,7 @@ Semantic::registerFunc(FuncDeclStmt *fds) {
         candidates = &_mod->FuncOverloads.at(name);
     }
 
-    Function func(fds->GetName(), fds->GetRetType(), fds->GetArgs(), fds->GetAccess(), Static, _mod);
+    Function func(fds->GetName(), resolveType(&fds->GetRetType()), fds->GetArgs(), fds->GetAccess(), Static, _mod);
     func.ASTNode = fds;
     func.Status = NotAnalyzed;
     candidates->Candidates.push_back(func);
@@ -582,7 +584,6 @@ Semantic::analyzeUS(UsingStmt *us) {
         _builder.CreateVar(node->Mod->ToString() + "." + name, obj.Type, nullptr, Extern);
     }
     for (auto &[name, s] : node->Mod->Structs) {
-        // TODO: add declaration of methods
         std::vector<Type *> fields;
         for (auto &f : s.Fields) {
             resolveType(&f.Var.Type);
@@ -593,6 +594,17 @@ Semantic::analyzeUS(UsingStmt *us) {
             }
         }
         _builder.CreateStruct(s.GetMangledName(), fields);
+
+        for (auto &candidates : s.Methods) {
+            for (auto &c : candidates.Candidates) {
+                std::vector<HIRFuncArgument> hirArgs;
+                for (int i = 0; i < c.Func.Args.size(); ++i) {
+                    auto &a = c.Func.Args[i];
+                    hirArgs.push_back(HIRFuncArgument(a.Name.Name, a.Type, a.DefaultVal ? analyzeExpr(a.DefaultVal).HirNode : nullptr));
+                }
+                _builder.CreateFunc(s.GetMangledName() + "." + c.Func.Name.Name, c.Func.RetType, hirArgs, false, true);
+            }
+        }
     }
     for (auto &[name, candidates] : node->Mod->FuncOverloads) {
         for (auto &c : candidates.Candidates) {
@@ -856,7 +868,7 @@ Semantic::registerMethod(Struct *s, ImplStmt::Method *method) {
         overload = &s->Methods.back();
     }
 
-    Function func(method->Name, method->RetType, method->Args, method->Access, Static, s->Parent);
+    Function func(method->Name, resolveType(&method->RetType), method->Args, method->Access, Static, s->Parent);
     func.ASTNode = nullptr;
     func.Status = NotAnalyzed;
     
@@ -923,6 +935,7 @@ Semantic::analyzeMethodBody(Struct *s, Method *method, ImplStmt::Method *methodO
     auto *entry = _builder.CreateBlock(func->HirNode, "entry");
     _builder.SetInsertPoint(entry);
 
+    analyzingMethodOfStruct = s;
     bool hasRet = false;
     for (auto &stmt : methodObj->Body) {
         if (stmt->GetKind() == NkRetStmt) {
@@ -930,6 +943,7 @@ Semantic::analyzeMethodBody(Struct *s, Method *method, ImplStmt::Method *methodO
         }
         analyzeStmt(stmt);
     }
+    analyzingMethodOfStruct = nullptr;
 
     _vars.pop();
     _currentFuncVarCount = oldVarCount;
@@ -1508,6 +1522,12 @@ Semantic::analyzeSIE(StructInstanceExpr *sie) {
             .AddSpan(sie->GetPath().front().Start, sie->GetPath().back().End, "undeclared");
         return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
     }
+
+    bool allowInitPrivateFields = false;
+    if (analyzingMethodOfStruct && *analyzingMethodOfStruct == *s) {
+        allowInitPrivateFields = true;
+    }
+    
     std::vector<std::pair<int, HIRNode *>> fields;
     int index = 0;
     for (int i = 0; i < sie->GetFields().size(); ++i) {
@@ -1521,8 +1541,9 @@ Semantic::analyzeSIE(StructInstanceExpr *sie) {
                 .AddSpan(sie->GetFields()[i].first.Start, sie->GetFields()[i].first.End);
             continue;
         }
-        if (it->Access == Priv) {
-            _diag.Report(Error, "struct '" + fullPath + "' has inaccessible fields and cannot be initialized directly")
+        
+        if (it->Access == Priv && !allowInitPrivateFields) {
+            _diag.Report(Error, "struct '" + fullPath + "' has inaccessible fields and cannot be initialized directly from an external context")
                 .SetCode(ErrPrivateSymbol)
                 .AddSpan(sie->GetPath().front().Start, sie->GetPath().back().End);
             return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };

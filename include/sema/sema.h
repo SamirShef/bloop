@@ -59,6 +59,15 @@ public:
             if (!s) {
                 continue;
             }
+            if (s->GetKind() == NkUsingStmt) {
+                analyzeUS(llvm::cast<UsingStmt>(s));
+            }
+        }
+        
+        for (auto &s : ast) {
+            if (!s) {
+                continue;
+            }
             if (s->GetKind() == NkStructDeclStmt) {
                 analyzeSDS(llvm::cast<StructDeclStmt>(s));
             }
@@ -77,7 +86,7 @@ public:
         }
 
         for (auto &s : ast) {
-            if (!s || s->GetKind() == NkStructDeclStmt) {
+            if (!s || s->GetKind() == NkStructDeclStmt || s->GetKind() == NkUsingStmt) {
                 continue;
             }
             analyzeStmt(s);
