@@ -59,6 +59,15 @@ public:
             if (!s) {
                 continue;
             }
+            if (s->GetKind() == NkUsingStmt) {
+                analyzeUS(llvm::cast<UsingStmt>(s));
+            }
+        }
+        
+        for (auto &s : ast) {
+            if (!s) {
+                continue;
+            }
             if (s->GetKind() == NkStructDeclStmt) {
                 analyzeSDS(llvm::cast<StructDeclStmt>(s));
             }
@@ -71,10 +80,13 @@ public:
             if (s->GetKind() == NkFuncDeclStmt) {
                 registerFunc(llvm::cast<FuncDeclStmt>(s));
             }
+            else if (s->GetKind() == NkImplStmt) {
+                registerImplMethods(llvm::cast<ImplStmt>(s));
+            }
         }
 
         for (auto &s : ast) {
-            if (!s || s->GetKind() == NkStructDeclStmt) {
+            if (!s || s->GetKind() == NkStructDeclStmt || s->GetKind() == NkUsingStmt) {
                 continue;
             }
             analyzeStmt(s);
@@ -137,6 +149,21 @@ private:
 
     void
     analyzeSDS(StructDeclStmt *sds);
+
+    void
+    registerImplMethods(ImplStmt *is);
+
+    void
+    registerMethod(Struct *s, ImplStmt::Method *method);
+
+    void
+    resolveMethodSignature(Struct *s, Method *method, ImplStmt::Method *methodObj);
+
+    void
+    analyzeMethodBody(Struct *s, Method *method, ImplStmt::Method *methodObj);
+
+    void
+    analyzeIS(ImplStmt *is);
 
     SemanticResult
     analyzeExpr(Expr *expr);

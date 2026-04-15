@@ -230,6 +230,8 @@ CodeGen::generateExpr(HIRNode *expr) {
         NODE(HIRNkFuncCallExpr, generateFCE, HIRFuncCallExpr);
         NODE(HIRNkStructInstanceExpr, generateSIE, HIRStructInstanceExpr);
         NODE(HIRNkFieldExpr, generateFE, HIRFieldExpr);
+        NODE(HIRNkDeref, generateDeref, HIRDeref);
+        NODE(HIRNkRef, generateRef, HIRRef);
     }
     #undef NODE
 }
@@ -467,6 +469,16 @@ llvm::Value *
 CodeGen::generateFE(HIRFieldExpr *fe) {
     llvm::Value *base = generateExpr(fe->GetBase());
     return _builder.CreateExtractValue(base, fe->GetIndex(), base->getName() + "." + std::to_string(fe->GetIndex()));
+}
+
+llvm::Value *
+CodeGen::generateDeref(HIRDeref *deref) {
+    return _builder.CreateLoad(getType(deref->GetBaseType()), generateExpr(deref->GetBase()));
+}
+
+llvm::Value *
+CodeGen::generateRef(HIRRef *ref) {
+    return generateLValue(ref->GetBase());
 }
 
 llvm::Type *

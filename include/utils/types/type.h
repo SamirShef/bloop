@@ -128,4 +128,9 @@ public:
 bool
 operator==(const Type &lhs, const Type &rhs);
 
+inline bool
+operator!=(const Type &lhs, const Type &rhs) {
+    return !(lhs == rhs);
+}
+
 }

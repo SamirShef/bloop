@@ -169,6 +169,15 @@ private:
                 _strPool.GetID(f.Var.Name.Name);
                 _typesPool.GetID(f.Var.Type);
             }
+            for (auto &overload : s.Methods) {
+                for (auto &m : overload.Candidates) {
+                    _strPool.GetID(m.Func.Name.Name);
+                    _typesPool.GetID(m.Func.RetType);
+                    for (auto &a : m.Func.Args) {
+                        _typesPool.GetID(a.Type);
+                    }
+                }
+            }
         }
         for (auto &[name, mod] : mod->Imports) {
             collectStringsAndTypes(mod);
@@ -338,6 +347,22 @@ private:
                 structRec.push_back(static_cast<uint64_t>(_typesPool.GetID(f.Var.Type)));
                 structRec.push_back(static_cast<uint64_t>(f.Access));
                 structRec.push_back(static_cast<uint64_t>(f.IsStatic));
+            }
+            structRec.push_back(static_cast<uint64_t>(s.Methods.size()));
+            for (auto &overload : s.Methods) {
+                structRec.push_back(static_cast<uint64_t>(overload.Candidates.size()));
+                for (auto &m : overload.Candidates) {
+                    structRec.push_back(static_cast<uint64_t>(m.IsStatic));
+                    structRec.push_back(static_cast<uint64_t>(m.Access));
+                    structRec.push_back(static_cast<uint64_t>(_strPool.GetID(m.Func.Name.Name)));
+                    structRec.push_back(static_cast<uint64_t>(_typesPool.GetID(m.Func.RetType)));
+                    structRec.push_back(static_cast<uint64_t>(m.Func.Storage));
+                    
+                    structRec.push_back(static_cast<uint64_t>(m.Func.Args.size()));
+                    for (auto &a : m.Func.Args) {
+                        structRec.push_back(static_cast<uint64_t>(_typesPool.GetID(a.Type)));
+                    }
+                }
             }
             w.EmitRecord(SymStruct, structRec);
         }

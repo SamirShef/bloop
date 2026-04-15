@@ -116,6 +116,12 @@ private:
 
     llvm::Value *
     generateFE(HIRFieldExpr *fe);
+
+    llvm::Value *
+    generateDeref(HIRDeref *deref);
+
+    llvm::Value *
+    generateRef(HIRRef *ref);
     
     llvm::Type *
     getType(Type *type);

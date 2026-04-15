@@ -76,9 +76,14 @@ private:
     void
     readIntoModule(Module *mod, llvm::BitstreamCursor &cursor) {
         if (llvm::Error err = cursor.EnterSubBlock(ModBlockID)) {
+            llvm::consumeError(std::move(err));
             return;
         }
+        parseModuleBody(mod, cursor);
+    }
 
+    void
+    parseModuleBody(Module *mod, llvm::BitstreamCursor &cursor) {
         while (!cursor.AtEndOfStream()) {
             auto entryOrErr = cursor.advance();
             if (!entryOrErr) {
@@ -101,8 +106,17 @@ private:
                 continue;
             }
 
+            if (entry.Kind == llvm::BitstreamEntry::Error) {
+                break; 
+            }
+
             llvm::SmallVector<uint64_t, 64> record;
-            auto code = cursor.readRecord(entry.ID, record).get();
+            auto codeOrErr = cursor.readRecord(entry.ID, record);
+            if (!codeOrErr) {
+                llvm::consumeError(codeOrErr.takeError());
+                break;
+            }
+            auto code = codeOrErr.get();
 
             if (code == ModInfo) {
                 mod->Access = static_cast<AccessModifier>(record[1]);
@@ -163,18 +177,55 @@ private:
         Module *parent = _modules[record[2]];
         int fieldsCount = record[3];
         std::vector<Field> fields;
+
+        int idx = 4;
         for (int i = 0; i < fieldsCount; ++i) {
-            NameObj fName(_strPool[record[4 + i * 4]], emptyLoc, emptyLoc);
-            Variable fVar(fName, _types[record[4 + i * 4 + 1]], false, static_cast<AccessModifier>(record[4 + i * 4 + 2]), Value::GetIncorrectValue());
-            fields.push_back(Field(fVar, static_cast<bool>(record[4 + i * 4 + 3]), fVar.Access));
+            std::string name = _strPool[record[idx++]];
+            Type *type = _types[record[idx++]];
+            AccessModifier access = static_cast<AccessModifier>(record[idx++]);
+            bool isStatic = static_cast<bool>(record[idx++]);
+            NameObj fName(name, emptyLoc, emptyLoc);
+            Variable fVar(fName, type, false, access, Value::GetIncorrectValue());
+            fields.push_back(Field(fVar, isStatic, fVar.Access));
         }
+
+        std::vector<MethodOverload> methods;
+        int methodsCount = record[idx++];
+        for (int i = 0; i < methodsCount; ++i) {
+            MethodOverload overload;
+            int candidatesCount = record[idx++];
+            
+            for (int j = 0; j < candidatesCount; ++j) {
+                bool isStatic = static_cast<bool>(record[idx++]);
+                AccessModifier access = static_cast<AccessModifier>(record[idx++]);
+                
+                NameObj funcName(_strPool[record[idx++]], emptyLoc, emptyLoc);
+                Type *retType = _types[record[idx++]];
+                StorageKind funcStorage = static_cast<StorageKind>(record[idx++]);
+                
+                int argsCount = static_cast<int>(record[idx++]);
+                std::vector<Argument> args;
+                for (int k = 0; k < argsCount; ++k) {
+                    NameObj argName("", emptyLoc, emptyLoc);
+                    Type *argType = _types[record[idx++]];
+                    args.push_back(Argument(argName, argType));
+                }
+                
+                Function func(funcName, retType, args, access, funcStorage, mod);
+                overload.Candidates.push_back(Method(func, isStatic, access));
+            }
+            methods.push_back(overload);
+        }
+        
         Struct s(name, parent, fields, access);
+        s.Methods = methods;
         mod->Structs.emplace(name.Name, s);
     }
 
     void
     handleSubmodule(Module *parent, llvm::BitstreamCursor &cursor) {
         if (llvm::Error err = cursor.EnterSubBlock(ModBlockID)) {
+            llvm::consumeError(std::move(err));
             return;
         }
 
@@ -200,7 +251,7 @@ private:
                         parent->Submods[subName] = subMod;
                     }
 
-                    readIntoModule(subMod, cursor);
+                    parseModuleBody(subMod, cursor);
                     return;
                 }
             }

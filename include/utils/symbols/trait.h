@@ -19,13 +19,22 @@ struct Method {
     }
 };
 
-struct Trait {
-    NameObj             Name;
-    std::vector<Method> Methods;
-    AccessModifier      Access;
-    uint                RefsCount = 0;
+struct MethodOverload {
+    std::vector<Method> Candidates;
 
-    explicit Trait(NameObj n, std::vector<Method> &m, AccessModifier a) : Name(n), Methods(m), Access(a) {}
+    bool
+    operator==(const MethodOverload &rhs) const {
+        return Candidates == rhs.Candidates;
+    }
+};
+
+struct Trait {
+    NameObj                     Name;
+    std::vector<MethodOverload> Methods;
+    AccessModifier              Access;
+    uint                        RefsCount = 0;
+
+    explicit Trait(NameObj n, std::vector<MethodOverload> &m, AccessModifier a) : Name(n), Methods(m), Access(a) {}
 
     bool
     operator==(const Trait &rhs) const {

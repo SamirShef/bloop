@@ -13,7 +13,8 @@ struct Value {
         Unknown,
         Const,
         Nil,
-        TypeLit
+        TypeLit,
+        This
     } Kind;
     ValueData Data;
     class Type *Type;
