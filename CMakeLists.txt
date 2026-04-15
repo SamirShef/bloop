@@ -18,7 +18,8 @@ execute_process(
     COMMAND ${LLVM_CONFIG} --cxxflags
     OUTPUT_VARIABLE LLVM_CXXFLAGS
     OUTPUT_STRIP_TRAILING_WHITESPACE
-)                                                                          
+)
+
 execute_process(
     COMMAND ${LLVM_CONFIG} --ldflags
     OUTPUT_VARIABLE LLVM_LDFLAGS
@@ -55,16 +56,24 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(tomlplusplus)
 
-file(GLOB_RECURSE SOURCES "src/*.cpp")
+file(GLOB_RECURSE CORE_SOURCES "src/*.cpp")
+list(FILTER CORE_SOURCES EXCLUDE REGEX "src/main\\.cpp$")
 
-add_executable(${PROJECT_NAME} ${SOURCES})
+add_library(bloop-core STATIC ${CORE_SOURCES})
 
-target_include_directories(${PROJECT_NAME} PRIVATE ${LLVM_INCLUDE_DIRS}include)
-target_compile_definitions(${PROJECT_NAME} PRIVATE ${LLVM_DEFINITIONS})
-separate_arguments(LLVM_LIBS)
-separate_arguments(LLVM_LDFLAGS)
-separate_arguments(LLVM_CXXFLAGS)
-target_compile_options(${PROJECT_NAME} PRIVATE ${LLVM_CXXFLAGS})
-target_link_libraries(${PROJECT_NAME} PRIVATE ${LLVM_LIBS} ${LLVM_LDFLAGS})
-target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json::nlohmann_json)
-target_link_libraries(${PROJECT_NAME} PRIVATE tomlplusplus::tomlplusplus)
+target_include_directories(bloop-core PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${LLVM_INCLUDE_DIR}
+)
+
+target_compile_options(bloop-core PRIVATE ${LLVM_CXXFLAGS})
+
+target_link_libraries(bloop-core PUBLIC
+    nlohmann_json::nlohmann_json
+    tomlplusplus::tomlplusplus
+    ${LLVM_LIBS}
+    ${LLVM_LDFLAGS}
+)
+
+add_executable(bloop src/main.cpp)
+target_link_libraries(bloop PRIVATE bloop-core)

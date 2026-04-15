@@ -186,7 +186,7 @@ public:
             exit(1);
         }
         
-        toml::table toml = toml::parse_file(path.string()).table();
+        toml::table toml = toml::parse_file(path.string());
         
         std::string name = toml["package"]["name"].value_or(packageName);
         std::string root = toml["package"]["root"].value_or("src/main.bl");
