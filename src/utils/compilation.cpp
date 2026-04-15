@@ -45,7 +45,7 @@ EmitObjectFile(llvm::Module *mod, const std::string &fileName, std::string targe
     llvm::TargetOptions opt;
     std::optional<llvm::Reloc::Model> rm = llvm::Reloc::Model::PIC_;
     
-    auto *targetMachine = target->createTargetMachine(triple.getTriple(), cpu, features, opt, rm);
+    auto *targetMachine = target->createTargetMachine(triple, cpu, features, opt, rm);
 
     mod->setDataLayout(targetMachine->createDataLayout());
 
