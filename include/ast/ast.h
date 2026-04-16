@@ -6,6 +6,7 @@
 #include <ast/stmts/vds.h>
 #include <ast/stmts/vas.h>
 #include <ast/stmts/fas.h>
+#include <ast/stmts/das.h>
 #include <ast/stmts/rs.h>
 #include <ast/stmts/ies.h>
 #include <ast/stmts/fls.h>
@@ -23,3 +24,6 @@
 #include <ast/exprs/mce.h>
 #include <ast/exprs/sie.h>
 #include <ast/exprs/te.h>
+#include <ast/exprs/ne.h>
+#include <ast/exprs/re.h>
+#include <ast/exprs/de.h>

@@ -1,4 +1,5 @@
 #include <codegen/codegen.h>
+#include <llvm/IR/Intrinsics.h>
 #include <utils/types/types.h>
 
 namespace bloop {
@@ -20,6 +21,7 @@ CodeGen::generateNode(HIRNode *node) {
         NODE(HIRNkBasicBlock, generateBB, HIRBasicBlock);
         NODE(HIRNkBranch, generateBR, HIRBranch);
         NODE(HIRNkStructDeclStmt, generateSDS, HIRStructDeclStmt);
+        NODE(HIRNkDerefStore, generateDerefStore, HIRDerefStore);
     }
     #undef NODE
 }
@@ -53,6 +55,10 @@ CodeGen::generateLValue(HIRNode *node) {
             auto fe = static_cast<HIRFieldExpr *>(node);
             llvm::Value *basePtr = generateLValue(fe->GetBase());
             return _builder.CreateStructGEP(getType(fe->GetBaseType()), basePtr, fe->GetIndex());
+        }
+        case HIRNkDeref: {
+            auto deref = static_cast<HIRDeref *>(node);
+            return generateExpr(deref->GetBase());
         }
         default:
             return nullptr;
@@ -112,6 +118,13 @@ CodeGen::generateFieldStore(HIRFieldStore *fieldStore) {
     llvm::Value *base = generateLValue(fieldStore->GetBase());
     llvm::Value *fieldPtr = _builder.CreateStructGEP(getType(fieldStore->GetBaseType()), base, fieldStore->GetIndex(), base->getName() + "." + std::to_string(fieldStore->GetIndex()) + ".gep");
     return _builder.CreateStore(generateExpr(fieldStore->GetExpr()), fieldPtr);
+}
+
+llvm::Value *
+CodeGen::generateDerefStore(HIRDerefStore *ds) {
+    llvm::Value *ptr = generateExpr(ds->GetPtr());
+    llvm::Value *val = generateExpr(ds->GetExpr());
+    return _builder.CreateStore(val, ptr);
 }
 
 void
@@ -242,6 +255,8 @@ CodeGen::generateExpr(HIRNode *expr) {
         NODE(HIRNkFieldExpr, generateFE, HIRFieldExpr);
         NODE(HIRNkDeref, generateDeref, HIRDeref);
         NODE(HIRNkRef, generateRef, HIRRef);
+        NODE(HIRNkNilExpr, generateNE, HIRNilExpr);
+        NODE(HIRNkNilCheck, generateNilCheck, HIRNilCheck);
 
         case HIRNkVarDeclStmt: {
             auto vds = llvm::cast<HIRVarDeclStmt>(expr);
@@ -365,10 +380,10 @@ CodeGen::generateLE(HIRLiteralExpr *le) {
         case Type::Array: {
             // TODO: implement
         }
-        case Type::StructPtr: {
+        case Type::Struct: {
             // TODO: implement
         }
-        case Type::TraitPtr: {
+        case Type::Trait: {
             // TODO: implement
         }
         case Type::ModulePtr: {
@@ -498,6 +513,45 @@ CodeGen::generateRef(HIRRef *ref) {
     return generateLValue(ref->GetBase());
 }
 
+llvm::Value *
+CodeGen::generateNE(HIRNilExpr *ne) {
+    return llvm::ConstantPointerNull::get(_builder.getPtrTy());
+}
+
+llvm::Value *
+CodeGen::generateNilCheck(HIRNilCheck *nilCheck) {
+    llvm::Value *ptrVal = generateExpr(nilCheck->GetPtr());
+
+    llvm::Function *func = _builder.GetInsertBlock()->getParent();
+    llvm::BasicBlock *panicBB = llvm::BasicBlock::Create(_context, "nil.panic", func);
+    llvm::BasicBlock *okBB = llvm::BasicBlock::Create(_context, "nil.ok", func);
+
+    llvm::Value *isNull = _builder.CreateIsNull(ptrVal);
+    _builder.CreateCondBr(isNull, panicBB, okBB);
+
+    _builder.SetInsertPoint(panicBB);
+
+    llvm::FunctionType *putsType = llvm::FunctionType::get(_builder.getInt32Ty(), { _builder.getPtrTy() }, false);
+    llvm::FunctionCallee putsFunc = _module->getOrInsertFunction("puts", putsType);
+
+    llvm::FunctionType *exitType = llvm::FunctionType::get(_builder.getVoidTy(), { _builder.getInt32Ty() }, false);
+    llvm::FunctionCallee exitFunc = _module->getOrInsertFunction("exit", exitType);
+
+    llvm::Value *panicMsg = _builder.CreateGlobalStringPtr(
+        "panic: runtime error: attempt to dereference a nil value at " + nilCheck->GetPos(),
+        "panic.msg"
+    );
+
+    _builder.CreateCall(putsFunc, { panicMsg });
+    _builder.CreateCall(exitFunc, { _builder.getInt32(1) });
+    
+    _builder.CreateUnreachable();
+
+    _builder.SetInsertPoint(okBB);
+
+    return ptrVal;
+}
+
 llvm::Type *
 CodeGen::getType(Type *type) {
     if (!type) {
@@ -506,7 +560,7 @@ CodeGen::getType(Type *type) {
     
     switch (type->GetKind()) {
         case Type::Char: {
-            // TODO: implement
+            return _builder.getInt32Ty();
         }
         case Type::Integer: {
             return _builder.getIntNTy(type->AsInteger()->GetBitWidth());
@@ -535,14 +589,11 @@ CodeGen::getType(Type *type) {
         case Type::Array: {
             // TODO: implement
         }
-        case Type::StructPtr: {
-            auto *s = type->AsStructPtr();
+        case Type::Struct: {
+            auto *s = type->AsStruct();
             return llvm::StructType::getTypeByName(_context, s->GetBaseMod()->ToString() + "." + s->GetName().Name);
         }
-        case Type::TraitPtr: {
-            // TODO: implement
-        }
-        case Type::ModulePtr: {
+        case Type::Trait: {
             // TODO: implement
         }
         case Type::Noth: {

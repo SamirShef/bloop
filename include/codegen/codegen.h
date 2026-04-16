@@ -2,6 +2,7 @@
 #include <hir/hir.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/Support/SourceMgr.h>
 
 namespace bloop {
 
@@ -68,6 +69,9 @@ private:
 
     llvm::Value *
     generateFieldStore(HIRFieldStore *fieldStore);
+
+    llvm::Value *
+    generateDerefStore(HIRDerefStore *ds);
     
     void
     declareFDS(HIRFuncDeclStmt *fds);
@@ -122,6 +126,12 @@ private:
 
     llvm::Value *
     generateRef(HIRRef *ref);
+
+    llvm::Value *
+    generateNE(HIRNilExpr *ne);
+
+    llvm::Value *
+    generateNilCheck(HIRNilCheck *nilCheck);
     
     llvm::Type *
     getType(Type *type);

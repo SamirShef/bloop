@@ -1,5 +1,5 @@
 #pragma once
-#include "utils/symbols/storageKind.h"
+#include <utils/symbols/storageKind.h>
 #include <hir/node.h>
 
 namespace bloop {

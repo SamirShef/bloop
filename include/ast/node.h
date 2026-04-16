@@ -8,6 +8,7 @@ enum NodeKind : uint8_t {
     NkStartStmts,
     NkVarDeclStmt,
     NkVarAsgnStmt,
+    NkDerefAsgnStmt,
     NkFieldAsgnStmt,
     NkFuncDeclStmt,
     NkFuncCallStmt,
@@ -32,6 +33,9 @@ enum NodeKind : uint8_t {
     NkMethodCallExpr,
     NkStructInstanceExpr,
     NkTypeExpr,
+    NkNilExpr,
+    NkRefExpr,
+    NkDerefExpr,
     NkEndExprs
 };
 
@@ -48,13 +52,13 @@ public:
         return _kind;
     }
     
-    llvm::SMLoc
-    GetStartLoc() const {
+    llvm::SMLoc &
+    GetStartLoc() {
         return _start;
     }
 
-    llvm::SMLoc
-    GetEndLoc() const {
+    llvm::SMLoc &
+    GetEndLoc() {
         return _end;
     }
 };
