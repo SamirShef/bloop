@@ -77,6 +77,11 @@ Parser::parseStmt(bool consumeSemi) {
         case TkImpl: {
             return parseIS();
         }
+        case TkDel: {
+            Stmt *res = parseDS();
+            EXPECT_SEMI();
+            return res;
+        }
     }
     const Token tok = advance();
     _diag.Report(Error, "expected statement")
@@ -385,6 +390,13 @@ Parser::parseIS() {
     return createNode<ImplStmt>(structType, traitType, methods, firstTok.Start, peek(-1).End);
 }
 
+Stmt *
+Parser::parseDS() {
+    const Token firstTok = advance();
+    Expr *expr = parseExpr();
+    return createNode<DelStmt>(expr);
+}
+
 StructDeclStmt::Field
 Parser::parseStructField() {
     AccessModifier access = expect(TkPub) ? Pub : Priv;
@@ -609,6 +621,16 @@ Parser::parsePrefixExpr(bool allowStruct) {
         case TkStar: {
             Expr *expr = parsePrefixExpr(allowStruct);
             base = createNode<DerefExpr>(expr);
+            base->GetStartLoc() = tok.Start;
+            break;
+        }
+        case TkNew: {
+            Expr *typeExpr = parsePrefixExpr();
+            Expr *expr = nullptr;
+            if (expect(TkColon)) {
+                expr = parseExpr();
+            }
+            base = createNode<NewExpr>(typeExpr, expr, expr ? expr->GetEndLoc() : typeExpr->GetEndLoc());
             base->GetStartLoc() = tok.Start;
             break;
         }

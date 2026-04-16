@@ -91,6 +91,9 @@ private:
     llvm::Value *
     generateSDS(HIRStructDeclStmt *sds);
 
+    llvm::Value *
+    generateDS(HIRDelStmt *ds);
+
     void
     generateImplicitMain();
 
@@ -129,6 +132,9 @@ private:
 
     llvm::Value *
     generateNE(HIRNilExpr *ne);
+
+    llvm::Value *
+    generateNew(HIRNewExpr *ne);
 
     llvm::Value *
     generateNilCheck(HIRNilCheck *nilCheck);

@@ -33,6 +33,7 @@ Semantic::analyzeStmt(Stmt *stmt) {
         NODE(NkVarDeclStmt, analyzeVDS, VarDeclStmt);
         NODE(NkVarAsgnStmt, analyzeVAS, VarAsgnStmt);
         NODE(NkFieldAsgnStmt, analyzeFAS, FieldAsgnStmt);
+        NODE(NkDerefAsgnStmt, analyzeDAS, DerefAsgnStmt);
         NODE(NkFuncDeclStmt, analyzeFuncBody, FuncDeclStmt);
         NODE(NkFuncCallStmt, analyzeFCS, FuncCallStmt);
         NODE(NkMethodCallStmt, analyzeMCS, MethodCallStmt);
@@ -44,7 +45,7 @@ Semantic::analyzeStmt(Stmt *stmt) {
         NODE(NkContinueStmt, analyzeCS, ContinueStmt);
         NODE(NkStructDeclStmt, analyzeSDS, StructDeclStmt);
         NODE(NkImplStmt, analyzeIS, ImplStmt);
-        NODE(NkDerefAsgnStmt, analyzeDAS, DerefAsgnStmt);
+        NODE(NkDelStmt, analyzeDS, DelStmt);
 
         default: {
             _diag.Report(Error, "compiler limitation: statement type is currently unimplemented")
@@ -1247,6 +1248,19 @@ Semantic::analyzeIS(ImplStmt *is) {
     }
 }
 
+void
+Semantic::analyzeDS(DelStmt *ds) {
+    // TODO: mark base pointer object as Value::Nil
+    auto res = analyzeExpr(ds->GetExpr());
+    if (!res.Val.Type->IsPointer()) {
+        _diag.Report(Error, "operator 'del' requires a pointer type; found '" + res.Val.Type->ToString() + "'")
+            .SetCode(ErrDelForNonPtrObj)
+            .AddSpan(ds->GetExpr()->GetStartLoc(), ds->GetExpr()->GetEndLoc());
+        return;
+    }
+    _builder.CreateDel(res.HirNode);
+}
+
 Semantic::SemanticResult
 Semantic::analyzeExpr(Expr *expr) {
     #define NODE(k, f, t) case k: return f(llvm::cast<t>(expr));
@@ -1263,6 +1277,8 @@ Semantic::analyzeExpr(Expr *expr) {
         NODE(NkNilExpr, analyzeNE, NilExpr);
         NODE(NkRefExpr, analyzeRE, RefExpr);
         NODE(NkDerefExpr, analyzeDE, DerefExpr);
+        NODE(NkNewExpr, analyzeNew, NewExpr);
+        
         default: {
             _diag.Report(Error, "compiler limitation: expression type is currently unimplemented")
                 .SetCode(ErrLimitation)
@@ -1969,6 +1985,32 @@ Semantic::analyzeDE(DerefExpr *de) {
     base.Val.Type = ptr->GetBaseType();
     base.Val.Kind = Value::Unknown;
     return { base.Val, _builder.CreateDereference(base.HirNode, base.Val.Type) };
+}
+
+Semantic::SemanticResult
+Semantic::analyzeNew(NewExpr *ne) {
+    auto typeRes = analyzeExpr(ne->GetTypeExpr());
+    if (typeRes.Val.Kind != Value::TypeLit && ne->GetTypeExpr()->GetKind() != NkStructInstanceExpr) {
+        _diag.Report(Error, "'new' operator requires a type, but found an expression of type '" + typeRes.Val.Type->ToString() + "'")
+            .SetCode(ErrInvalidOperandOfNew)
+            .AddSpan(ne->GetStartLoc(), ne->GetEndLoc());
+        return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+    }
+    Type *type = new PointerType(typeRes.Val.Type, typeRes.Val.Type->GetStartLoc(), typeRes.Val.Type->GetEndLoc());
+    typeRes.Val.Kind = Value::Unknown;
+
+    HIRNode *res = nullptr;
+    if (ne->GetExpr()) {
+        auto expr = analyzeExpr(ne->GetExpr());
+        expr = implicitlyCast(expr, &typeRes.Val.Type);
+        res = expr.HirNode;
+    }
+    else if (ne->GetTypeExpr()->GetKind() == NkStructInstanceExpr) {
+        res = analyzeSIE(llvm::cast<StructInstanceExpr>(ne->GetTypeExpr())).HirNode;
+    }
+    typeRes.Val.Type = type;
+
+    return { typeRes.Val, _builder.CreateNew(type, res) };
 }
 
 void

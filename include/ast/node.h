@@ -21,6 +21,7 @@ enum NodeKind : uint8_t {
     NkMethodCallStmt,
     NkStructDeclStmt,
     NkImplStmt,
+    NkDelStmt,
     NkEndStmts,
 
     NkStartExprs,
@@ -36,6 +37,7 @@ enum NodeKind : uint8_t {
     NkNilExpr,
     NkRefExpr,
     NkDerefExpr,
+    NkNewExpr,
     NkEndExprs
 };
 

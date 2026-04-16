@@ -76,6 +76,9 @@ private:
 
     Stmt *
     parseIS();
+
+    Stmt *
+    parseDS();
     
     StructDeclStmt::Field
     parseStructField();

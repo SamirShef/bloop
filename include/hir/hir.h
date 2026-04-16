@@ -18,3 +18,5 @@
 #include <hir/ref.h>
 #include <hir/ne.h>
 #include <hir/nilCheck.h>
+#include <hir/new.h>
+#include <hir/del.h>

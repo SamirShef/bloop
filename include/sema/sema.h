@@ -177,6 +177,9 @@ private:
     void
     analyzeIS(ImplStmt *is);
 
+    void
+    analyzeDS(DelStmt *ds);
+
     SemanticResult
     analyzeExpr(Expr *expr);
 
@@ -215,6 +218,9 @@ private:
 
     Semantic::SemanticResult
     analyzeDE(DerefExpr *de);
+
+    Semantic::SemanticResult
+    analyzeNew(NewExpr *ne);
 
     Variable *
     findGlobVar(std::string name) {

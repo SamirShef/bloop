@@ -14,6 +14,7 @@
 #include <ast/stmts/cs.h>
 #include <ast/stmts/sds.h>
 #include <ast/stmts/is.h>
+#include <ast/stmts/ds.h>
 
 #include <ast/exprs/be.h>
 #include <ast/exprs/le.h>
@@ -27,3 +28,4 @@
 #include <ast/exprs/ne.h>
 #include <ast/exprs/re.h>
 #include <ast/exprs/de.h>
+#include <ast/exprs/new.h>

@@ -22,6 +22,7 @@ CodeGen::generateNode(HIRNode *node) {
         NODE(HIRNkBranch, generateBR, HIRBranch);
         NODE(HIRNkStructDeclStmt, generateSDS, HIRStructDeclStmt);
         NODE(HIRNkDerefStore, generateDerefStore, HIRDerefStore);
+        NODE(HIRNkDelStmt, generateDS, HIRDelStmt);
     }
     #undef NODE
 }
@@ -213,6 +214,14 @@ CodeGen::generateSDS(HIRStructDeclStmt *sds) {
     return nullptr;
 }
 
+llvm::Value *
+CodeGen::generateDS(HIRDelStmt *ds) {
+    llvm::FunctionType *freeType = llvm::FunctionType::get(_builder.getVoidTy(), { _builder.getPtrTy() }, false);
+    auto free = _module->getOrInsertFunction("free", freeType);
+    llvm::Value *val = generateExpr(ds->GetExpr());
+    return _builder.CreateCall(free, { val }, "free." + val->getName());
+}
+
 void
 CodeGen::generateImplicitMain() {
     llvm::Type *argcType = _builder.getInt32Ty();
@@ -256,6 +265,7 @@ CodeGen::generateExpr(HIRNode *expr) {
         NODE(HIRNkDeref, generateDeref, HIRDeref);
         NODE(HIRNkRef, generateRef, HIRRef);
         NODE(HIRNkNilExpr, generateNE, HIRNilExpr);
+        NODE(HIRNkNewExpr, generateNew, HIRNewExpr);
         NODE(HIRNkNilCheck, generateNilCheck, HIRNilCheck);
 
         case HIRNkVarDeclStmt: {
@@ -519,6 +529,22 @@ CodeGen::generateNE(HIRNilExpr *ne) {
 }
 
 llvm::Value *
+CodeGen::generateNew(HIRNewExpr *ne) {
+    llvm::FunctionType *mallocType = llvm::FunctionType::get(_builder.getPtrTy(), { _builder.getInt64Ty() }, false);
+    auto malloc = _module->getOrInsertFunction("malloc", mallocType);
+    auto dl = _module->getDataLayout();
+    size_t size = dl.getTypeAllocSize(getType(ne->GetType()));
+    llvm::Value *ptr = _builder.CreateCall(malloc, { _builder.getInt64(size) }, "new." + ne->GetType()->ToString());
+
+    if (ne->GetExpr()) {
+        llvm::Value *val = generateExpr(ne->GetExpr());
+        _builder.CreateStore(val, ptr);
+    }
+    
+    return ptr;
+}
+
+llvm::Value *
 CodeGen::generateNilCheck(HIRNilCheck *nilCheck) {
     llvm::Value *ptrVal = generateExpr(nilCheck->GetPtr());
 
@@ -538,7 +564,7 @@ CodeGen::generateNilCheck(HIRNilCheck *nilCheck) {
     llvm::FunctionCallee exitFunc = _module->getOrInsertFunction("exit", exitType);
 
     llvm::Value *panicMsg = _builder.CreateGlobalStringPtr(
-        "panic: runtime error: attempt to dereference a nil value at " + nilCheck->GetPos(),
+        "\e[1;31mpanic\e[0m: runtime error: attempt to dereference a nil value at " + nilCheck->GetPos(),
         "panic.msg"
     );
 

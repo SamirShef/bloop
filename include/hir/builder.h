@@ -228,6 +228,18 @@ public:
         return _ctx.CreateNode<HIRNilCheck>(ptr, pos);
     }
 
+    HIRNewExpr *
+    CreateNew(Type *type, HIRNode *expr) {
+        return _ctx.CreateNode<HIRNewExpr>(type, expr);
+    }
+
+    HIRDelStmt *
+    CreateDel(HIRNode *expr) {
+        auto *node = _ctx.CreateNode<HIRDelStmt>(expr);
+        AddToBlock(node);
+        return node;
+    }
+
     HIRNode *
     GetIncorrectValue() {
         return CreateLiteral(Value::GetIncorrectValue());

@@ -13,6 +13,7 @@ enum HIRNodeKind : uint8_t {
     HIRNkDerefStore,
     HIRNkFieldStore,
     HIRNkStructDeclStmt,
+    HIRNkDelStmt,
     HIRNkEndStmts,
     HIRNkCast,
     HIRNkBranch,
@@ -29,6 +30,7 @@ enum HIRNodeKind : uint8_t {
     HIRNkDeref,
     HIRNkRef,
     HIRNkNilExpr,
+    HIRNkNewExpr,
     HIRNkEndExprs,
 
     HIRNkBasicBlock,
