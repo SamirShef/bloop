@@ -22,3 +22,4 @@
 #include <ast/exprs/fce.h>
 #include <ast/exprs/mce.h>
 #include <ast/exprs/sie.h>
+#include <ast/exprs/te.h>

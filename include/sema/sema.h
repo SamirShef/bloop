@@ -201,6 +201,9 @@ private:
     SemanticResult
     analyzeSIE(StructInstanceExpr *sie);
 
+    Semantic::SemanticResult
+    analyzeTE(TypeExpr *te);
+
     Variable *
     findGlobVar(std::string name) {
         auto it = _mod->Vars.find(name);

@@ -565,6 +565,49 @@ Parser::parsePrefixExpr(bool allowStruct) {
             }
             return expr;
         }
+        case TkChar: {
+            base = createNode<TypeExpr>(new CharType(tok.Start, tok.End));
+            break;
+        }
+        case TkBool:
+        case TkI8:
+        case TkI16:
+        case TkI32:
+        case TkI64:
+        case TkI128:
+        case TkU8:
+        case TkU16:
+        case TkU32:
+        case TkU64:
+        case TkU128: {
+            if (tok.Kind == TkBool) {
+                base = createNode<TypeExpr>(new IntegerType(1, false, tok.Start, tok.End));
+            }
+            bool isUnsigned = tok.Kind >= TkU8;
+            unsigned bitWidth = 1 << ((isUnsigned ? tok.Kind - TkU8 : tok.Kind - TkI8) + 3);
+            base = createNode<TypeExpr>(new IntegerType(bitWidth, isUnsigned, tok.Start, tok.End));
+            break;
+        }
+        case TkISize:
+        case TkUSize:
+            base = createNode<TypeExpr>(new SizeType(tok.Kind == TkUSize, tok.Start, tok.End));
+            break;
+        case TkF32:
+        case TkF64:
+            base = createNode<TypeExpr>(new FloatingType((FloatingType::FloatingKind)(tok.Kind - TkF32), tok.Start, tok.End));
+            break;
+        case TkString:
+            base = createNode<TypeExpr>(new StringType(tok.Start, tok.End));
+            break;
+        case TkNoth:
+            base = createNode<TypeExpr>(new NothType(tok.Start, tok.End));
+            break;
+    }
+    if (!base) {
+        _diag.Report(Error, "expected expression")
+            .SetCode(ErrExpectedExpr)
+            .AddSpan(tok.Start, tok.End);
+        return nullptr;
     }
     while (peek().Kind == TkDot || peek().Kind == TkLParen) {
         base = parseChain(base); 

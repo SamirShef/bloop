@@ -1229,6 +1229,7 @@ Semantic::analyzeExpr(Expr *expr) {
         NODE(NkFieldExpr, analyzeFE, FieldExpr);
         NODE(NkMethodCallExpr, analyzeMCE, MethodCallExpr);
         NODE(NkStructInstanceExpr, analyzeSIE, StructInstanceExpr);
+        NODE(NkTypeExpr, analyzeTE, TypeExpr);
         default: {
             _diag.Report(Error, "compiler limitation: expression type is currently unimplemented")
                 .SetCode(ErrLimitation)
@@ -1872,6 +1873,12 @@ Semantic::analyzeSIE(StructInstanceExpr *sie) {
                             sie->GetStartLoc(), sie->GetEndLoc());
     auto hitNode = _builder.CreateStructInstance(s->GetMangledName(), fields);
     return { val, hitNode };
+}
+
+Semantic::SemanticResult
+Semantic::analyzeTE(TypeExpr *te) {
+    return { Value(Value::TypeLit, ValueData(), te->GetType(), te->GetType()->GetStartLoc(), te->GetType()->GetEndLoc()),
+             nullptr };
 }
 
 void
