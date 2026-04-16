@@ -12,8 +12,8 @@ AS(AsTuple, TupleType)
 AS(AsString, StringType)
 AS(AsPointer, PointerType)
 AS(AsArray, ArrayType)
-AS(AsStructPtr, StructType)
-AS(AsTraitPtr, TraitType)
+AS(AsStruct, StructType)
+AS(AsTrait, TraitType)
 AS(AsModulePtr, ModuleType)
 AS(AsUnknownNamedType, UnknownNamedType)
 
@@ -50,9 +50,9 @@ operator==(const Type &lhs, const Type &rhs) {
             }
             return true;
         }
-        case Type::StructPtr: {
-            auto l = lhs.AsStructPtr();
-            auto r = rhs.AsStructPtr();
+        case Type::Struct: {
+            auto l = lhs.AsStruct();
+            auto r = rhs.AsStruct();
             return l->GetName().Name == r->GetName().Name && *l->GetBaseMod() == *r->GetBaseMod();
         }
         default:

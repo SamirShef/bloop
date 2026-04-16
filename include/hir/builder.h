@@ -123,6 +123,11 @@ public:
         return _ctx.CreateNode<HIRCastNode>(kind, expr, from, to);
     }
 
+    HIRNilExpr *
+    CreateNil() {
+        return _ctx.CreateNode<HIRNilExpr>();
+    }
+
     HIRBranch *
     CreateBr(HIRBasicBlock *thenBlock) {
         auto *node = _ctx.CreateNode<HIRBranch>(thenBlock);
@@ -160,6 +165,13 @@ public:
     HIRVarStore *
     CreateStore(StorageKind kind, int index, HIRNode *expr) {
         auto *node = _ctx.CreateNode<HIRVarStore>(kind, index, expr);
+        AddToBlock(node);
+        return node;
+    }
+
+    HIRDerefStore *
+    CreateDerefStore(HIRNode *ptr, HIRNode *val) {
+        auto *node = _ctx.CreateNode<HIRDerefStore>(ptr, val);
         AddToBlock(node);
         return node;
     }
@@ -209,6 +221,11 @@ public:
     HIRRef *
     CreateReference(HIRNode *base) {
         return _ctx.CreateNode<HIRRef>(base);
+    }
+
+    HIRNilCheck *
+    CreateNilCheck(HIRNode *ptr, std::string pos) {
+        return _ctx.CreateNode<HIRNilCheck>(ptr, pos);
     }
 
     HIRNode *

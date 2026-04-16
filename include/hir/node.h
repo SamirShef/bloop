@@ -10,6 +10,7 @@ enum HIRNodeKind : uint8_t {
     HIRNkUsingStmt,
     HIRNkRetStmt,
     HIRNkVarStore,
+    HIRNkDerefStore,
     HIRNkFieldStore,
     HIRNkStructDeclStmt,
     HIRNkEndStmts,
@@ -27,9 +28,11 @@ enum HIRNodeKind : uint8_t {
     HIRNkStructInstanceExpr,
     HIRNkDeref,
     HIRNkRef,
+    HIRNkNilExpr,
     HIRNkEndExprs,
 
     HIRNkBasicBlock,
+    HIRNkNilCheck,
 };
 
 class HIRNode {

@@ -36,8 +36,8 @@ public:
         String,
         Pointer,
         Array,
-        StructPtr,
-        TraitPtr,
+        Struct,
+        Trait,
         ModulePtr,
         Noth
     };
@@ -100,11 +100,11 @@ public:
     IS(IsArray, Array)
     AS(AsArray, ArrayType)
 
-    IS(IsStructPtr, StructPtr)
-    AS(AsStructPtr, StructType)
+    IS(IsStruct, Struct)
+    AS(AsStruct, StructType)
 
-    IS(IsTraitPtr, TraitPtr)
-    AS(AsTraitPtr, TraitType)
+    IS(IsTrait, Trait)
+    AS(AsTrait, TraitType)
 
     IS(IsModulePtr, ModulePtr)
     AS(AsModulePtr, ModuleType)

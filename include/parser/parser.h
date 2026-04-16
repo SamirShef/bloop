@@ -9,6 +9,7 @@
 #include <ast/stmts/is.h>
 #include <ast/exprs/ve.h>
 #include <ast/exprs/fe.h>
+#include <ast/exprs/de.h>
 #include <vector>
 
 namespace bloop {
@@ -51,6 +52,9 @@ private:
 
     Stmt *
     parseFAS(FieldExpr *base);
+
+    Stmt *
+    parseDAS(DerefExpr *base);
 
     Stmt *
     parseFDS();

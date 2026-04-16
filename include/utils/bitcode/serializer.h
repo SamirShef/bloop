@@ -260,13 +260,13 @@ private:
                     w.EmitRecord(TypeIdPointer, record);
                     break;
                 }
-                case Type::StructPtr: {
+                case Type::Struct: {
                     auto *st = llvm::cast<StructType>(t);
                     record = { _strPool.GetID(st->GetName().Name), static_cast<uint64_t>(_modPool.GetID(st->GetBaseMod())) };
                     w.EmitRecord(TypeIdStruct, record);
                     break;
                 }
-                case Type::TraitPtr: {
+                case Type::Trait: {
                     auto *trt = llvm::cast<TraitType>(t);
                     record = { _strPool.GetID(trt->GetName().Name), static_cast<uint64_t>(_modPool.GetID(trt->GetBaseMod())) };
                     w.EmitRecord(TypeIdTrait, record);

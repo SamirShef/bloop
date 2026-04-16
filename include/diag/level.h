@@ -45,6 +45,9 @@ enum ErrorCode : uint8_t {
     ErrInitStaticFieldInInitializer,
     ErrAccessStaticFromInstance,
     ErrAccessNonStaticFromType,
+    ErrCannotTakeRef,
+    ErrCannotBeDeref,
+    ErrNilDeref,
 };
 
 enum WarnCode : uint8_t {

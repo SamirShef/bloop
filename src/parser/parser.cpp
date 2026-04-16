@@ -66,7 +66,8 @@ Parser::parseStmt(bool consumeSemi) {
             EXPECT_SEMI();
             return res;
         }
-        case TkId: {
+        case TkId:
+        case TkStar: {
             Expr *expr = parseExpr();
             return getStmtFromExpr(expr, consumeSemi);
         }
@@ -94,6 +95,11 @@ Parser::getStmtFromExpr(Expr *expr, bool consumeSemi) {
         }
         case NkFieldExpr: {
             Stmt *res = parseFAS(llvm::cast<FieldExpr>(expr));
+            EXPECT_SEMI();
+            return res;
+        }
+        case NkDerefExpr: {
+            Stmt *res = parseDAS(llvm::cast<DerefExpr>(expr));
             EXPECT_SEMI();
             return res;
         }
@@ -169,6 +175,22 @@ Parser::parseFAS(FieldExpr *base) {
         expr = createCompoundAssignmentOp(op, base, expr);
     }
     return createNode<FieldAsgnStmt>(base->GetBase(), base->GetName(), expr, peek().End);
+}
+
+Stmt *
+Parser::parseDAS(DerefExpr *base) {
+    if (!isAssignmentOp(peek().Kind)) {
+        _diag.Report(Error, "expected '=' or compound assignment")
+            .SetCode(ErrExpectedToken)
+            .AddSpan(peek().Start, peek().End);
+        return nullptr;
+    }
+    const Token op = advance();
+    Expr *expr = parseExpr();
+    if (op.Kind != TkEq && isAssignmentOp(op.Kind)) {
+        expr = createCompoundAssignmentOp(op, base, expr);
+    }
+    return createNode<DerefAsgnStmt>(base, expr, base->GetStartLoc(), peek().End);
 }
 
 Stmt *
@@ -508,6 +530,19 @@ Parser::parsePrefixExpr(bool allowStruct) {
         #undef INT_LIT
         #undef LIT
         
+        case TkLParen: {
+            Expr *expr = parseExpr();
+            expr->GetStartLoc() = tok.Start;
+            expr->GetEndLoc() = peek(-1).End;
+            // TODO: add handle of tuple initialization
+            if (!expect(TkRParen)) {
+                _diag.Report(Error, "expected ')'")
+                    .SetCode(ErrExpectedToken)
+                    .AddSpan(peek().Start, peek().End);
+            }
+            base = expr;
+            break;
+        }
         case TkMinus:
         case TkBang: {
             base = createNode<UnaryExpr>(tok, parsePrefixExpr(allowStruct), tok.Start, peek(-1).End);
@@ -565,6 +600,18 @@ Parser::parsePrefixExpr(bool allowStruct) {
             }
             return expr;
         }
+        case TkAnd: {
+            Expr *expr = parsePrefixExpr(allowStruct);
+            base = createNode<RefExpr>(expr);
+            base->GetStartLoc() = tok.Start;
+            break;
+        }
+        case TkStar: {
+            Expr *expr = parsePrefixExpr(allowStruct);
+            base = createNode<DerefExpr>(expr);
+            base->GetStartLoc() = tok.Start;
+            break;
+        }
         case TkChar: {
             base = createNode<TypeExpr>(new CharType(tok.Start, tok.End));
             break;
@@ -602,6 +649,8 @@ Parser::parsePrefixExpr(bool allowStruct) {
         case TkNoth:
             base = createNode<TypeExpr>(new NothType(tok.Start, tok.End));
             break;
+        case TkNil:
+            return createNode<NilExpr>(tok.Start, tok.End);
     }
     if (!base) {
         _diag.Report(Error, "expected expression")

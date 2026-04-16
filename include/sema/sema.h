@@ -110,6 +110,9 @@ private:
 
     void
     analyzeFAS(FieldAsgnStmt *fas);
+
+    void
+    analyzeDAS(DerefAsgnStmt *das);
     
     void
     analyzeFDS(FuncDeclStmt *fds);
@@ -203,6 +206,15 @@ private:
 
     Semantic::SemanticResult
     analyzeTE(TypeExpr *te);
+
+    Semantic::SemanticResult
+    analyzeNE(NilExpr *ne);
+
+    Semantic::SemanticResult
+    analyzeRE(RefExpr *re);
+
+    Semantic::SemanticResult
+    analyzeDE(DerefExpr *de);
 
     Variable *
     findGlobVar(std::string name) {
@@ -350,6 +362,9 @@ private:
 
     Function *
     resolveBestOverload(FuncOverload *candidates, const std::vector<Type *> &argTypes, llvm::SMLoc start, llvm::SMLoc end);
+
+    Semantic::SemanticResult
+    ensureSafePointer(SemanticResult res);
 
     HIRBinaryKind
     tokenKindToHIRBk(TokenKind kind);

@@ -10,9 +10,9 @@ class TraitType : public Type {
     Module *_baseMod;
 
 public:
-    explicit TraitType(NameObj n, Module *b, llvm::SMLoc s, llvm::SMLoc e) : _name(n), _baseMod(b), Type(Type::TraitPtr, s, e) {}
+    explicit TraitType(NameObj n, Module *b, llvm::SMLoc s, llvm::SMLoc e) : _name(n), _baseMod(b), Type(Type::Trait, s, e) {}
 
-    CLASSOF(TraitPtr)
+    CLASSOF(Trait)
 
     NameObj
     GetName() const {

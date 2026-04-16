@@ -44,6 +44,8 @@ Semantic::analyzeStmt(Stmt *stmt) {
         NODE(NkContinueStmt, analyzeCS, ContinueStmt);
         NODE(NkStructDeclStmt, analyzeSDS, StructDeclStmt);
         NODE(NkImplStmt, analyzeIS, ImplStmt);
+        NODE(NkDerefAsgnStmt, analyzeDAS, DerefAsgnStmt);
+
         default: {
             _diag.Report(Error, "compiler limitation: statement type is currently unimplemented")
                 .SetCode(ErrLimitation)
@@ -64,7 +66,7 @@ Semantic::analyzeVDS(VarDeclStmt *vds) {
         }
     }
     else {
-        if (vds->GetExpr()) {
+        if (vds->GetExpr() && val.Type) {
             vds->GetType() = val.Type;
         }
         else {
@@ -127,6 +129,15 @@ Semantic::analyzeVAS(VarAsgnStmt *vas) {
 void
 Semantic::analyzeFAS(FieldAsgnStmt *fas) {
     auto baseRes = analyzeExpr(fas->GetBase());
+
+    while (baseRes.Val.Type->IsPointer()) {
+        baseRes = ensureSafePointer(baseRes);
+        Type *ptrBaseType = baseRes.Val.Type->AsPointer()->GetBaseType();
+        baseRes.HirNode = _builder.CreateDereference(baseRes.HirNode, ptrBaseType);
+        baseRes.Val.Type = ptrBaseType;
+        baseRes.Val.IsLValue = true;
+    }
+    
     if (baseRes.Val.Type->IsModulePtr()) {
         Module *mod = baseRes.Val.Type->AsModulePtr()->GetMod();
         if (auto it = mod->Vars.find(fas->GetName().Name); it != mod->Vars.end()) {
@@ -152,8 +163,8 @@ Semantic::analyzeFAS(FieldAsgnStmt *fas) {
             .AddSpan(fas->GetName().Start, fas->GetName().End, "undeclared");
         return;
     }
-    else if (baseRes.Val.Type->IsStructPtr()) {
-        auto *st = baseRes.Val.Type->AsStructPtr();
+    else if (baseRes.Val.Type->IsStruct()) {
+        auto *st = baseRes.Val.Type->AsStruct();
         auto &s = st->GetBaseMod()->Structs.at(st->GetName().Name);
         auto it = std::find_if(s.Fields.begin(), s.Fields.end(), [&](const Field &f) {
             return f.Var.Name.Name == fas->GetName().Name;
@@ -215,6 +226,25 @@ Semantic::analyzeFAS(FieldAsgnStmt *fas) {
     _diag.Report(Error, "symbol '" + fas->GetName().Name + "' is undeclared")
         .SetCode(ErrUndeclaredSymbol)
         .AddSpan(fas->GetName().Start, fas->GetName().End, "undeclared");
+}
+
+void
+Semantic::analyzeDAS(DerefAsgnStmt *das) {
+    auto res = analyzeExpr(das->GetBase());
+    
+    if (!res.Val.Type->IsPointer()) {
+        _diag.Report(Error, "cannot dereference non-pointer type")
+            .AddSpan(das->GetStartLoc(), das->GetEndLoc());
+        return;
+    }
+
+    res = ensureSafePointer(res);
+
+    auto val = analyzeExpr(das->GetExpr());
+    Type *expected = res.Val.Type->AsPointer()->GetBaseType();
+    val = implicitlyCast(val, &expected);
+
+    _builder.CreateDerefStore(res.HirNode, val.HirNode);
 }
 
 void
@@ -811,8 +841,8 @@ Semantic::registerImplMethods(ImplStmt *is) {
         return;
     }
 
-    if (type->IsStructPtr()) {
-        StructType *sType = type->AsStructPtr();
+    if (type->IsStruct()) {
+        StructType *sType = type->AsStruct();
         Struct *s = &sType->GetBaseMod()->Structs.at(sType->GetName().Name);
 
         for (auto &m : is->GetMethods()) {
@@ -1151,8 +1181,8 @@ Semantic::analyzeIS(ImplStmt *is) {
         return;
     }
 
-    if (type->IsStructPtr()) {
-        StructType *sType = type->AsStructPtr(); 
+    if (type->IsStruct()) {
+        StructType *sType = type->AsStruct(); 
         Struct *s = &sType->GetBaseMod()->Structs.at(sType->GetName().Name); 
         
         for (int i = 0; i < is->GetMethods().size(); ++i) {
@@ -1230,6 +1260,9 @@ Semantic::analyzeExpr(Expr *expr) {
         NODE(NkMethodCallExpr, analyzeMCE, MethodCallExpr);
         NODE(NkStructInstanceExpr, analyzeSIE, StructInstanceExpr);
         NODE(NkTypeExpr, analyzeTE, TypeExpr);
+        NODE(NkNilExpr, analyzeNE, NilExpr);
+        NODE(NkRefExpr, analyzeRE, RefExpr);
+        NODE(NkDerefExpr, analyzeDE, DerefExpr);
         default: {
             _diag.Report(Error, "compiler limitation: expression type is currently unimplemented")
                 .SetCode(ErrLimitation)
@@ -1460,6 +1493,15 @@ Semantic::analyzeFCE(FuncCallExpr *fce) {
 Semantic::SemanticResult
 Semantic::analyzeFE(FieldExpr *fe) {
     auto baseRes = analyzeExpr(fe->GetBase());
+
+    while (baseRes.Val.Type->IsPointer()) {
+        baseRes = ensureSafePointer(baseRes);
+        Type *ptrBaseType = baseRes.Val.Type->AsPointer()->GetBaseType();
+        baseRes.HirNode = _builder.CreateDereference(baseRes.HirNode, ptrBaseType);
+        baseRes.Val.Type = ptrBaseType;
+        baseRes.Val.IsLValue = true;
+    }
+    
     if (baseRes.Val.Type->IsModulePtr()) {
         Module *mod = baseRes.Val.Type->AsModulePtr()->GetMod();
         if (auto it = mod->Vars.find(fe->GetName().Name); it != mod->Vars.end()) {
@@ -1494,9 +1536,9 @@ Semantic::analyzeFE(FieldExpr *fe) {
             .AddSpan(fe->GetName().Start, fe->GetName().End, "undeclared");
         return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
     }
-    else if (baseRes.Val.Type->IsStructPtr()) {
+    else if (baseRes.Val.Type->IsStruct()) {
         bool baseIsThis = baseRes.Val.Kind == Value::This;
-        auto *st = baseRes.Val.Type->AsStructPtr();
+        auto *st = baseRes.Val.Type->AsStruct();
         auto &s = st->GetBaseMod()->Structs.at(st->GetName().Name);
         auto it = std::find_if(s.Fields.begin(), s.Fields.end(), [&](const Field &f) {
             return f.Var.Name.Name == fe->GetName().Name;
@@ -1561,6 +1603,15 @@ Semantic::analyzeFE(FieldExpr *fe) {
 Semantic::SemanticResult
 Semantic::analyzeMCE(MethodCallExpr *mce) {
     auto baseRes = analyzeExpr(mce->GetBase());
+
+    while (baseRes.Val.Type->IsPointer()) {
+        baseRes = ensureSafePointer(baseRes);
+        Type *ptrBaseType = baseRes.Val.Type->AsPointer()->GetBaseType();
+        baseRes.HirNode = _builder.CreateDereference(baseRes.HirNode, ptrBaseType);
+        baseRes.Val.Type = ptrBaseType;
+        baseRes.Val.IsLValue = true;
+    }
+    
     if (baseRes.Val.Type->IsModulePtr()) {
         Module *mod = baseRes.Val.Type->AsModulePtr()->GetMod();
         if (auto it = mod->FuncOverloads.find(mce->GetName().Name); it != mod->FuncOverloads.end()) {
@@ -1601,9 +1652,9 @@ Semantic::analyzeMCE(MethodCallExpr *mce) {
             .AddSpan(mce->GetName().Start, mce->GetName().End, "undeclared");
         return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
     }
-    else if (baseRes.Val.Type->IsStructPtr()) {
+    else if (baseRes.Val.Type->IsStruct()) {
         bool baseIsThis = baseRes.Val.Kind == Value::This;
-        auto *st = baseRes.Val.Type->AsStructPtr();
+        auto *st = baseRes.Val.Type->AsStruct();
         auto &s = st->GetBaseMod()->Structs.at(st->GetName().Name);
         std::string methodName = mce->GetName().Name;
 
@@ -1881,6 +1932,45 @@ Semantic::analyzeTE(TypeExpr *te) {
              nullptr };
 }
 
+Semantic::SemanticResult
+Semantic::analyzeNE(NilExpr *ne) {
+    return { Value(Value::Nil, ValueData(), nullptr, ne->GetStartLoc(), ne->GetEndLoc()),
+             nullptr };
+}
+
+Semantic::SemanticResult
+Semantic::analyzeRE(RefExpr *re) {
+    auto base = analyzeExpr(re->GetBase());
+    if (!base.Val.IsLValue) {
+        _diag.Report(Error, "cannot take reference of rvalue")
+            .SetCode(ErrCannotTakeRef)
+            .AddSpan(re->GetStartLoc(), re->GetEndLoc())
+            .AddHelp("consider storing the value in a variable first: 'var tmp = " + std::string(re->GetBase()->GetStartLoc().getPointer(), re->GetBase()->GetEndLoc().getPointer() - re->GetStartLoc().getPointer()) + "' and getting reference via '&tmp'");
+        return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+    }
+    base.Val.Type = new PointerType(base.Val.Type, base.Val.Type->GetStartLoc(), base.Val.Type->GetEndLoc());
+    base.Val.Kind = Value::Unknown;
+    return { base.Val, _builder.CreateReference(base.HirNode) };
+}
+
+Semantic::SemanticResult
+Semantic::analyzeDE(DerefExpr *de) {
+    auto base = analyzeExpr(de->GetBase());
+    Type *baseType = base.Val.Type;
+    if (!baseType->IsPointer()) {
+        _diag.Report(Error, "type '" + baseType->ToString() + "' cannot be dereferenced")
+            .SetCode(ErrCannotBeDeref)
+            .AddSpan(de->GetStartLoc(), de->GetEndLoc())
+            .AddHelp("found '" + baseType->ToString() + "' instead of a pointer; consider removing the dereference operator");
+        return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+    }
+    base = ensureSafePointer(base);
+    PointerType *ptr = baseType->AsPointer();
+    base.Val.Type = ptr->GetBaseType();
+    base.Val.Kind = Value::Unknown;
+    return { base.Val, _builder.CreateDereference(base.HirNode, base.Val.Type) };
+}
+
 void
 Semantic::createVar(std::string name, Variable var) {
     var.Index = var.Index == -1 ? _currentFuncVarCount++ : var.Index;
@@ -1889,6 +1979,13 @@ Semantic::createVar(std::string name, Variable var) {
 
 Type *
 Semantic::resolveType(Type **t) {
+    if (!t) {
+        return nullptr;
+    }
+    if (!*t) {
+        return nullptr;
+    }
+    
     switch ((*t)->GetKind()) {
         case Type::Tuple: {
             TupleType *tuple = (*t)->AsTuple();
@@ -2060,6 +2157,18 @@ Semantic::SemanticResult
 Semantic::implicitlyCast(SemanticResult res, Type **expectedType) {
     resolveType(&res.Val.Type);
     resolveType(expectedType);
+
+    if (res.Val.Kind == Value::Nil) {
+        if ((*expectedType)->IsPointer()) {
+            res.Val.Type = *expectedType;
+            return { res.Val, _builder.CreateNil() };
+        }
+        _diag.Report(Error, "cannot implicitly cast 'nil' to '" + (*expectedType)->ToString() + "'")
+            .SetCode(ErrCannotImplCast)
+            .AddSpan(res.Val.Start, res.Val.End);
+
+        return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+    }
     
     Type *src = res.Val.Type;
     Type *dst = *expectedType;
@@ -2211,6 +2320,26 @@ Semantic::resolveBestOverload(FuncOverload *candidates, const std::vector<Type *
     }
 
     return bestCand;
+}
+
+Semantic::SemanticResult
+Semantic::ensureSafePointer(SemanticResult res) {
+    if (res.Val.Kind == Value::Nil) {
+        _diag.Report(Error, "attempt to dereference a nil value")
+            .SetCode(ErrNilDeref)
+            .AddSpan(res.Val.Start, res.Val.End);
+        return res;
+    }
+
+    if (res.Val.Type->IsPointer() && res.Val.Kind == Value::Unknown) {
+        auto mgr = _diag.GetSourceMgr();
+        auto &buff = mgr->getBufferInfo(mgr->FindBufferContainingLoc(res.Val.Start));
+        auto lineAndCol = mgr->getLineAndColumn(res.Val.Start);
+        std::string pos = buff.Buffer->getBufferIdentifier().str() + ":" + std::to_string(lineAndCol.first) + ":" + std::to_string(lineAndCol.second);
+        res.HirNode = _builder.CreateNilCheck(res.HirNode, pos);
+    }
+
+    return res;
 }
 
 HIRBinaryKind

@@ -61,8 +61,8 @@ private:
             TYPE(String, std::get<2>(Data))
             TYPE(Pointer, Kind == Nil ? "<nil>" : "<pointer>")
             TYPE(Array, "<array>")
-            TYPE(StructPtr, "<struct " + Type->ToString() + ">")
-            TYPE(TraitPtr, "<trait " + Type->ToString() + ">")
+            TYPE(Struct, "<struct " + Type->ToString() + ">")
+            TYPE(Trait, "<trait " + Type->ToString() + ">")
             TYPE(ModulePtr, "<module " + Type->ToString() + ">")
             TYPE(Noth, "<noth>")
             default:
