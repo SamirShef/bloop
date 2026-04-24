@@ -104,7 +104,7 @@ initProj(const std::string &name) {
     std::ofstream mainFile(srcPath);
     if (mainFile.is_open()) {
         mainFile << "func main(): i32 {\n";
-        mainFile << "   return 0;\n";
+        mainFile << "    return 0;\n";
         mainFile << "}";
         mainFile.close();
     }

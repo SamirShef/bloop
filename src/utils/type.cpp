@@ -11,6 +11,7 @@ AS(AsFloating, FloatingType)
 AS(AsTuple, TupleType)
 AS(AsString, StringType)
 AS(AsPointer, PointerType)
+AS(AsSlice, SliceType)
 AS(AsArray, ArrayType)
 AS(AsStruct, StructType)
 AS(AsTrait, TraitType)
@@ -36,6 +37,9 @@ operator==(const Type &lhs, const Type &rhs) {
         }
         case Type::Pointer: {
             return *lhs.AsPointer()->GetBaseType() == *rhs.AsPointer()->GetBaseType();
+        }
+        case Type::Slice: {
+            return *lhs.AsSlice()->GetBaseType() == *rhs.AsSlice()->GetBaseType();
         }
         case Type::Tuple: {
             auto l = lhs.AsTuple();

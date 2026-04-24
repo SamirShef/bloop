@@ -113,6 +113,9 @@ private:
 
     void
     analyzeDAS(DerefAsgnStmt *das);
+
+    void
+    analyzeAAS(ArrayAsgnStmt *aas);
     
     void
     analyzeFDS(FuncDeclStmt *fds);
@@ -177,6 +180,9 @@ private:
     void
     analyzeIS(ImplStmt *is);
 
+    void
+    analyzeDS(DelStmt *ds);
+
     SemanticResult
     analyzeExpr(Expr *expr);
 
@@ -204,17 +210,26 @@ private:
     SemanticResult
     analyzeSIE(StructInstanceExpr *sie);
 
-    Semantic::SemanticResult
+    SemanticResult
     analyzeTE(TypeExpr *te);
 
-    Semantic::SemanticResult
+    SemanticResult
     analyzeNE(NilExpr *ne);
 
-    Semantic::SemanticResult
+    SemanticResult
     analyzeRE(RefExpr *re);
 
-    Semantic::SemanticResult
+    SemanticResult
     analyzeDE(DerefExpr *de);
+
+    SemanticResult
+    analyzeNew(NewExpr *ne);
+
+    SemanticResult
+    analyzeAIE(ArrayInstanceExpr *aie);
+
+    SemanticResult
+    analyzeAAE(ArrayAccessExpr *aae);
 
     Variable *
     findGlobVar(std::string name) {

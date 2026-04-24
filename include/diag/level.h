@@ -48,6 +48,9 @@ enum ErrorCode : uint8_t {
     ErrCannotTakeRef,
     ErrCannotBeDeref,
     ErrNilDeref,
+    ErrInvalidOperandOfNew,
+    ErrDelForNonAllocatedObj,
+    ErrDelForNonPtrObj,
 };
 
 enum WarnCode : uint8_t {

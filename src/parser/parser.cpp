@@ -67,7 +67,8 @@ Parser::parseStmt(bool consumeSemi) {
             return res;
         }
         case TkId:
-        case TkStar: {
+        case TkStar:
+        case TkLParen: {
             Expr *expr = parseExpr();
             return getStmtFromExpr(expr, consumeSemi);
         }
@@ -76,6 +77,11 @@ Parser::parseStmt(bool consumeSemi) {
         }
         case TkImpl: {
             return parseIS();
+        }
+        case TkDel: {
+            Stmt *res = parseDS();
+            EXPECT_SEMI();
+            return res;
         }
     }
     const Token tok = advance();
@@ -100,6 +106,11 @@ Parser::getStmtFromExpr(Expr *expr, bool consumeSemi) {
         }
         case NkDerefExpr: {
             Stmt *res = parseDAS(llvm::cast<DerefExpr>(expr));
+            EXPECT_SEMI();
+            return res;
+        }
+        case NkArrayAccessExpr: {
+            Stmt *res = parseAAS(llvm::cast<ArrayAccessExpr>(expr));
             EXPECT_SEMI();
             return res;
         }
@@ -191,6 +202,22 @@ Parser::parseDAS(DerefExpr *base) {
         expr = createCompoundAssignmentOp(op, base, expr);
     }
     return createNode<DerefAsgnStmt>(base, expr, base->GetStartLoc(), peek().End);
+}
+
+Stmt *
+Parser::parseAAS(ArrayAccessExpr *base) {
+    if (!isAssignmentOp(peek().Kind)) {
+        _diag.Report(Error, "expected `=` or `+=` or `-=` or `*=` or `/=` or `%=`")
+            .SetCode(ErrExpectedToken)
+            .AddSpan(peek().Start, peek().End);
+        return nullptr;
+    }
+    const Token op = advance();
+    Expr *expr = parseExpr();
+    if (op.Kind != TkEq && isAssignmentOp(op.Kind)) {
+        expr = createCompoundAssignmentOp(op, base, expr);
+    }
+    return createNode<ArrayAsgnStmt>(base->GetBase(), base->GetIndex(), expr, peek().End);
 }
 
 Stmt *
@@ -385,6 +412,13 @@ Parser::parseIS() {
     return createNode<ImplStmt>(structType, traitType, methods, firstTok.Start, peek(-1).End);
 }
 
+Stmt *
+Parser::parseDS() {
+    const Token firstTok = advance();
+    Expr *expr = parseExpr();
+    return createNode<DelStmt>(expr);
+}
+
 StructDeclStmt::Field
 Parser::parseStructField() {
     AccessModifier access = expect(TkPub) ? Pub : Priv;
@@ -543,6 +577,21 @@ Parser::parsePrefixExpr(bool allowStruct) {
             base = expr;
             break;
         }
+        case TkLBracket: {
+            std::vector<Expr *> exprs;
+            while (!expect(TkRBracket)) {
+                exprs.push_back(parseExpr());
+                if (peek().Kind != TkRBracket) {
+                    if (!expect(TkComma)) {
+                        _diag.Report(Error, "expected ','")
+                            .SetCode(ErrExpectedToken)
+                            .AddSpan(peek().Start, peek().End);
+                    }
+                }
+            }
+            base = createNode<ArrayInstanceExpr>(exprs, tok.Start, peek(-1).End);
+            break;
+        }
         case TkMinus:
         case TkBang: {
             base = createNode<UnaryExpr>(tok, parsePrefixExpr(allowStruct), tok.Start, peek(-1).End);
@@ -595,7 +644,7 @@ Parser::parsePrefixExpr(bool allowStruct) {
                 expr = createNode<FieldExpr>(expr, path[i]);
             }
             
-            if (peek().Kind == TkDot) {
+            if (peek().Kind == TkDot || peek().Kind == TkLBracket) {
                 expr = parseChain(expr);
             }
             return expr;
@@ -610,6 +659,20 @@ Parser::parsePrefixExpr(bool allowStruct) {
             Expr *expr = parsePrefixExpr(allowStruct);
             base = createNode<DerefExpr>(expr);
             base->GetStartLoc() = tok.Start;
+            break;
+        }
+        case TkNew: {
+            Type *type = consumeType();
+            Expr *expr = nullptr;
+            if (expect(TkLParen)) {
+                expr = parseExpr();
+                if (!expect(TkRParen)) {
+                    _diag.Report(Error, "expected ')'")
+                        .SetCode(ErrExpectedToken)
+                        .AddSpan(peek().Start, peek().End);
+                }
+            }
+            base = createNode<NewExpr>(type, expr, tok.Start, expr ? expr->GetEndLoc() : type->GetEndLoc());
             break;
         }
         case TkChar: {
@@ -658,7 +721,7 @@ Parser::parsePrefixExpr(bool allowStruct) {
             .AddSpan(tok.Start, tok.End);
         return nullptr;
     }
-    while (peek().Kind == TkDot || peek().Kind == TkLParen) {
+    while (peek().Kind == TkDot || peek().Kind == TkLParen || peek().Kind == TkLBracket) {
         base = parseChain(base); 
     }
     return base;
@@ -684,21 +747,35 @@ Parser::parseExpr(int minPrec, bool allowStruct) {
 
 Expr *
 Parser::parseChain(Expr *base) {
-    while (expect(TkDot)) {
-        const Token id = advance();
-        if (id.Kind != TkId) {
-            _diag.Report(Error, "expected identifier")
-                .SetCode(ErrExpectedId)
-                .AddSpan(id.Start, id.End);
+    while (true) {
+        if (expect(TkDot)) {
+            const Token id = advance();
+            if (id.Kind != TkId) {
+                _diag.Report(Error, "expected identifier")
+                    .SetCode(ErrExpectedId)
+                    .AddSpan(id.Start, id.End);
+            }
+            NameObj name = id;
+            if (expect(TkLParen)) {
+                std::vector<Expr *> args;
+                parseArgsInto(args);
+                base = createNode<MethodCallExpr>(base, name, args, peek(-1).End);
+            }
+            else {
+                base = createNode<FieldExpr>(base, name);
+            }
         }
-        NameObj name = id;
-        if (expect(TkLParen)) {
-            std::vector<Expr *> args;
-            parseArgsInto(args);
-            base = createNode<MethodCallExpr>(base, name, args, peek(-1).End);
+        else if (expect(TkLBracket)) {
+            Expr *index = parseExpr();
+            if (!expect(TkRBracket)) {
+                _diag.Report(Error, "expected ']'")
+                    .SetCode(ErrExpectedToken)
+                    .AddSpan(peek().Start, peek().End);
+            }
+            base = createNode<ArrayAccessExpr>(base, index, peek(-1).End);
         }
         else {
-            base = createNode<FieldExpr>(base, name);
+            break;
         }
     }
     return base;
@@ -822,7 +899,10 @@ Parser::consumeType() {
                     .SetCode(ErrExpectedToken)
                     .AddSpan(peek().Start, peek().End);
             }
-            return new ArrayType(base, size, c.Start, peek(-1).End);
+            if (size) {
+                return new ArrayType(base, size, c.Start, peek(-1).End);
+            }
+            return new SliceType(base, c.Start, peek(-1).End);
         }
         case TkLParen: {
             std::vector<Type *> types;
