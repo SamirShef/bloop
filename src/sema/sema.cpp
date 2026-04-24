@@ -1252,6 +1252,12 @@ Semantic::analyzeDS(DelStmt *ds) {
             .AddSpan(ds->GetExpr()->GetStartLoc(), ds->GetExpr()->GetEndLoc());
         return;
     }
+    auto *baseType = res.Val.Type->AsPointer();
+    if (auto *slice = baseType->GetBaseType()->AsSlice()) {
+        auto *sliceVal = _builder.CreateDereference(res.HirNode, slice);
+        auto *data = _builder.CreateFieldExpr(sliceVal, slice->GetBaseType(), 0);
+        _builder.CreateDel(data);
+    }
     _builder.CreateDel(res.HirNode);
 }
 
