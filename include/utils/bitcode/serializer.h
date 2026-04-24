@@ -23,6 +23,7 @@ enum TypeRecordIDs {
     TypeIdChar,
     TypeIdFloating,
     TypeIdPointer,
+    TypeIdSlice,
     TypeIdTuple,
     TypeIdStruct,
     TypeIdTrait,
@@ -258,6 +259,12 @@ private:
                     auto *pt = llvm::cast<PointerType>(t);
                     record = { _typesPool.GetID(pt->GetBaseType()) };
                     w.EmitRecord(TypeIdPointer, record);
+                    break;
+                }
+                case Type::Slice: {
+                    auto *st = llvm::cast<SliceType>(t);
+                    record = { _typesPool.GetID(st->GetBaseType()) };
+                    w.EmitRecord(TypeIdSlice, record);
                     break;
                 }
                 case Type::Struct: {

@@ -46,6 +46,7 @@ Semantic::analyzeStmt(Stmt *stmt) {
         NODE(NkStructDeclStmt, analyzeSDS, StructDeclStmt);
         NODE(NkImplStmt, analyzeIS, ImplStmt);
         NODE(NkDelStmt, analyzeDS, DelStmt);
+        NODE(NkArrayAsgnStmt, analyzeAAS, ArrayAsgnStmt);
 
         default: {
             _diag.Report(Error, "compiler limitation: statement type is currently unimplemented")
@@ -231,21 +232,14 @@ Semantic::analyzeFAS(FieldAsgnStmt *fas) {
 
 void
 Semantic::analyzeDAS(DerefAsgnStmt *das) {
-    auto res = analyzeExpr(das->GetBase());
-    
-    if (!res.Val.Type->IsPointer()) {
-        _diag.Report(Error, "cannot dereference non-pointer type")
-            .AddSpan(das->GetStartLoc(), das->GetEndLoc());
-        return;
-    }
-
-    res = ensureSafePointer(res);
+    auto ptr = analyzeExpr(llvm::cast<DerefExpr>(das->GetBase())->GetBase());
+    ptr = ensureSafePointer(ptr);
 
     auto val = analyzeExpr(das->GetExpr());
-    Type *expected = res.Val.Type->AsPointer()->GetBaseType();
+    Type *expected = ptr.Val.Type->AsPointer()->GetBaseType();
     val = implicitlyCast(val, &expected);
 
-    _builder.CreateDerefStore(res.HirNode, val.HirNode);
+    _builder.CreateDerefStore(ptr.HirNode, val.HirNode);
 }
 
 void
@@ -735,19 +729,19 @@ Semantic::analyzeFLS(ForLoopStmt *fls) {
     auto condRes = analyzeExpr(fls->GetCond());
     Type *boolType = new IntegerType(1, false, condRes.Val.Start, condRes.Val.End);
     condRes = implicitlyCast(condRes, &boolType);
-    _builder.CreateBr(condRes.HirNode, iteration, exit);
+    _builder.CreateBr(condRes.HirNode, body, exit);
 
     _builder.SetInsertPoint(iteration);
     if (fls->GetIteration()) {
         analyzeStmt(fls->GetIteration());
     }
-    _builder.CreateBr(body);
+    _builder.CreateBr(cond);
 
     _builder.SetInsertPoint(body);
     for (auto &s : fls->GetBody()) {
         analyzeStmt(s);
     }
-    _builder.CreateBr(cond);
+    _builder.CreateBr(iteration);
     
     _loops.pop();
     
@@ -1261,6 +1255,49 @@ Semantic::analyzeDS(DelStmt *ds) {
     _builder.CreateDel(res.HirNode);
 }
 
+void
+Semantic::analyzeAAS(ArrayAsgnStmt *aas) {
+    auto baseRes = analyzeExpr(aas->GetBase());
+    auto indexRes = analyzeExpr(aas->GetIndex());
+
+    if (!indexRes.Val.Type->IsSizeType()) {
+        _diag.Report(Error, "array index must be an usize")
+            .SetCode(ErrCannotImplCast)
+            .AddSpan(aas->GetIndex()->GetStartLoc(), aas->GetIndex()->GetEndLoc());
+        return;
+    }
+
+    Type *resultType = nullptr;
+    HIRNode *hirBase = baseRes.HirNode;
+
+    auto mgr = _diag.GetSourceMgr();
+    auto &buff = mgr->getBufferInfo(mgr->FindBufferContainingLoc(aas->GetIndex()->GetStartLoc()));
+    auto lineAndCol = mgr->getLineAndColumn(aas->GetIndex()->GetStartLoc());
+    std::string pos = buff.Buffer->getBufferIdentifier().str() + ":" + std::to_string(lineAndCol.first) + ":" + std::to_string(lineAndCol.second);
+    
+    if (baseRes.Val.Type->IsArray()) {
+        resultType = baseRes.Val.Type->AsArray()->GetBaseType();
+        // TODO: add bounds check node
+    }
+    else if (baseRes.Val.Type->IsSlice()) {
+        resultType = baseRes.Val.Type->AsSlice()->GetBaseType();
+        hirBase = _builder.CreateFieldExpr(hirBase, baseRes.Val.Type, 0);
+        HIRNode *len = _builder.CreateFieldExpr(baseRes.HirNode, baseRes.Val.Type, 1);
+        indexRes.HirNode = _builder.CreateBoundsCheck(len, indexRes.HirNode, pos);
+    }
+    else {
+        _diag.Report(Error, "type '" + baseRes.Val.Type->ToString() + "' does not support indexing")
+            .SetCode(ErrCannotApplyOp)
+            .AddSpan(aas->GetBase()->GetStartLoc(), aas->GetBase()->GetEndLoc());
+        return;
+    }
+
+    auto exprRes = analyzeExpr(aas->GetExpr());
+    exprRes = implicitlyCast(exprRes, &resultType);
+
+    _builder.CreateArrayStore(hirBase, baseRes.Val.Type, indexRes.HirNode, exprRes.HirNode);
+}
+
 Semantic::SemanticResult
 Semantic::analyzeExpr(Expr *expr) {
     #define NODE(k, f, t) case k: return f(llvm::cast<t>(expr));
@@ -1278,6 +1315,8 @@ Semantic::analyzeExpr(Expr *expr) {
         NODE(NkRefExpr, analyzeRE, RefExpr);
         NODE(NkDerefExpr, analyzeDE, DerefExpr);
         NODE(NkNewExpr, analyzeNew, NewExpr);
+        NODE(NkArrayInstanceExpr, analyzeAIE, ArrayInstanceExpr);
+        NODE(NkArrayAccessExpr, analyzeAAE, ArrayAccessExpr);
         
         default: {
             _diag.Report(Error, "compiler limitation: expression type is currently unimplemented")
@@ -1309,7 +1348,7 @@ Semantic::analyzeBE(BinaryExpr *be) {
         resultType = commonType;
     }
 
-    HIRNode *binNode = _builder.CreateBinary(resultType, lhsRes.HirNode, rhsRes.HirNode, tokenKindToHIRBk(be->GetOp().Kind));
+    HIRNode *binNode = _builder.CreateBinary(commonType, lhsRes.HirNode, rhsRes.HirNode, tokenKindToHIRBk(be->GetOp().Kind));
 
     if (lhs.IsUnknown() || rhs.IsUnknown()) {
         return { Value(Value::Unknown, ValueData(), resultType, be->GetStartLoc(), be->GetEndLoc()), binNode };
@@ -1318,13 +1357,13 @@ Semantic::analyzeBE(BinaryExpr *be) {
     // TODO: add suporting of strings
     double lhsVal;
     double rhsVal;
-    if (lhs.Type->IsInteger()) {
+    if (lhs.Type->IsInteger() || lhs.Type->IsSizeType()) {
         lhsVal = std::get<0>(lhs.Data);
     }
     else {
         lhsVal = std::get<1>(lhs.Data);
     }
-    if (rhs.Type->IsInteger()) {
+    if (rhs.Type->IsInteger() || rhs.Type->IsSizeType()) {
         rhsVal = std::get<0>(rhs.Data);
     }
     else {
@@ -1354,6 +1393,7 @@ Semantic::analyzeBE(BinaryExpr *be) {
     switch (resultType->GetKind()) {
         #define VAL(t) Value(Value::Const, ValueData(static_cast<t>(res)), resultType, be->GetStartLoc(), be->GetEndLoc())
         case Type::Integer:
+        case Type::Size:
             return { VAL(int64_t), _builder.CreateLiteral(VAL(int64_t)) };
         case Type::Floating:
             return { VAL(double), _builder.CreateLiteral(VAL(double)) };
@@ -1406,7 +1446,7 @@ Semantic::analyzeUE(UnaryExpr *ue) {
             break;
     }
 
-    HIRNode *unNode = _builder.CreateUnary(rhsRes.HirNode, tokenKindToHIRUk(ue->GetOp().Kind));
+    HIRNode *unNode = _builder.CreateUnary(rhsRes.HirNode, rhs.Type, tokenKindToHIRUk(ue->GetOp().Kind));
     
     if (rhs.IsUnknown() || !ok) {
         return { Value(Value::Unknown, ValueData(), rhs.Type, ue->GetStartLoc(), ue->GetEndLoc()), unNode };
@@ -1446,7 +1486,7 @@ Semantic::analyzeVE(VarExpr *ve) {
                 return { it->second.Val, _builder.CreateLiteral(it->second.Val) };
             }
             HIRNode *veNode = _builder.CreateLoadVar(it->second.Storage, it->second.Index);
-            return { Value(it->second.Val.Kind, ValueData(), it->second.Type, ve->GetStartLoc(), ve->GetEndLoc(), true), veNode };
+            return { Value(Value::Unknown, ValueData(), it->second.Type, ve->GetStartLoc(), ve->GetEndLoc(), true), veNode };
         }
         varsCopy.pop();
     }
@@ -1609,6 +1649,18 @@ Semantic::analyzeFE(FieldExpr *fe) {
         }
         return { Value(Value::Unknown, ValueData(), it->Var.Type, fe->GetStartLoc(), fe->GetEndLoc(), true),
                  hirNode };
+    }
+    else if (auto *slice = baseRes.Val.Type->AsSlice()) {
+        if (fe->GetName().Name == "Data") {
+            HIRNode *hirNode = _builder.CreateFieldExpr(baseRes.HirNode, baseRes.Val.Type, 0);
+            return { Value(Value::Unknown, ValueData(), new PointerType(slice->GetBaseType(), slice->GetStartLoc(), slice->GetEndLoc()), fe->GetStartLoc(), fe->GetEndLoc(), true),
+                     hirNode };
+        }
+        else if (fe->GetName().Name == "Length") {
+            HIRNode *hirNode = _builder.CreateFieldExpr(baseRes.HirNode, baseRes.Val.Type, 1);
+            return { Value(Value::Unknown, ValueData(), new SizeType(true, slice->GetStartLoc(), slice->GetEndLoc()), fe->GetStartLoc(), fe->GetEndLoc(), true),
+                     hirNode };
+        }
     }
     _diag.Report(Error, "symbol '" + fe->GetName().Name + "' is undeclared")
         .SetCode(ErrUndeclaredSymbol)
@@ -1989,28 +2041,78 @@ Semantic::analyzeDE(DerefExpr *de) {
 
 Semantic::SemanticResult
 Semantic::analyzeNew(NewExpr *ne) {
-    auto typeRes = analyzeExpr(ne->GetTypeExpr());
-    if (typeRes.Val.Kind != Value::TypeLit && ne->GetTypeExpr()->GetKind() != NkStructInstanceExpr) {
-        _diag.Report(Error, "'new' operator requires a type, but found an expression of type '" + typeRes.Val.Type->ToString() + "'")
-            .SetCode(ErrInvalidOperandOfNew)
-            .AddSpan(ne->GetStartLoc(), ne->GetEndLoc());
-        return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
-    }
-    Type *type = new PointerType(typeRes.Val.Type, typeRes.Val.Type->GetStartLoc(), typeRes.Val.Type->GetEndLoc());
-    typeRes.Val.Kind = Value::Unknown;
-
+    resolveType(&ne->GetType());
+    Type *type = new PointerType(ne->GetType(), ne->GetType()->GetStartLoc(), ne->GetType()->GetEndLoc());
     HIRNode *res = nullptr;
     if (ne->GetExpr()) {
         auto expr = analyzeExpr(ne->GetExpr());
-        expr = implicitlyCast(expr, &typeRes.Val.Type);
-        res = expr.HirNode;
+        if (ne->GetType()->IsSlice() && expr.Val.Type->IsArray()) {
+            res = expr.HirNode;
+        }
+        else {
+            expr = implicitlyCast(expr, &ne->GetType());
+            res = expr.HirNode;
+        }
     }
-    else if (ne->GetTypeExpr()->GetKind() == NkStructInstanceExpr) {
-        res = analyzeSIE(llvm::cast<StructInstanceExpr>(ne->GetTypeExpr())).HirNode;
-    }
-    typeRes.Val.Type = type;
+    return { Value(Value::Unknown, ValueData(), type, ne->GetStartLoc(), ne->GetEndLoc()), _builder.CreateNew(ne->GetType(), res) };
+}
 
-    return { typeRes.Val, _builder.CreateNew(type, res) };
+Semantic::SemanticResult
+Semantic::analyzeAIE(ArrayInstanceExpr *aie) {
+    if (aie->GetExprs().size() == 0) {
+        // TODO: create error
+        return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+    }
+    auto fisrtExpr = analyzeExpr(aie->GetExprs()[0]);
+    std::vector<HIRNode *> exprs = { fisrtExpr.HirNode };
+    Type *arrType = fisrtExpr.Val.Type;
+    for (int i = 1; i < aie->GetExprs().size(); ++i) {
+        auto res = analyzeExpr(aie->GetExprs()[i]);
+        res = implicitlyCast(res, &arrType);
+        exprs.push_back(res.HirNode);
+    }
+    auto val = Value(Value::Unknown, ValueData(), new ArrayType(arrType,
+                                                                new LiteralExpr(Value(Value::Const,
+                                                                                ValueData(static_cast<int64_t>(aie->GetExprs().size())),
+                                                                                new SizeType(true, aie->GetStartLoc(), aie->GetEndLoc()),
+                                                                aie->GetStartLoc(), aie->GetEndLoc())), aie->GetStartLoc(), aie->GetEndLoc()),
+                     aie->GetStartLoc(), aie->GetEndLoc());
+    val.Type->AsArray()->SetSize(aie->GetExprs().size());
+    auto hirNode = _builder.CreateArray(arrType, exprs);
+    return { val, hirNode };
+}
+
+Semantic::SemanticResult
+Semantic::analyzeAAE(ArrayAccessExpr *aae) {
+    auto baseRes = analyzeExpr(aae->GetBase());
+    auto indexRes = analyzeExpr(aae->GetIndex());
+
+    if (!indexRes.Val.Type->IsSizeType()) {
+        _diag.Report(Error, "array index must be an usize")
+            .SetCode(ErrCannotImplCast)
+            .AddSpan(aae->GetIndex()->GetStartLoc(), aae->GetIndex()->GetEndLoc());
+        return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+    }
+
+    Type *resultType = nullptr;
+    HIRNode *hirBase = baseRes.HirNode;
+
+    if (baseRes.Val.Type->IsArray()) {
+        resultType = baseRes.Val.Type->AsArray()->GetBaseType();
+    }
+    else if (baseRes.Val.Type->IsSlice()) {
+        resultType = baseRes.Val.Type->AsSlice()->GetBaseType();
+        hirBase = _builder.CreateFieldExpr(hirBase, baseRes.Val.Type, 0);
+    }
+    else {
+        _diag.Report(Error, "type '" + baseRes.Val.Type->ToString() + "' does not support indexing")
+            .SetCode(ErrCannotApplyOp)
+            .AddSpan(aae->GetBase()->GetStartLoc(), aae->GetBase()->GetEndLoc());
+        return { Value::GetIncorrectValue(), _builder.GetIncorrectValue() };
+    }
+
+    return { Value(Value::Unknown, ValueData(), resultType, aae->GetStartLoc(), aae->GetEndLoc(), true),
+             _builder.CreateArrayAccess(hirBase, baseRes.Val.Type, indexRes.HirNode) };
 }
 
 void
@@ -2041,6 +2143,11 @@ Semantic::resolveType(Type **t) {
         case Type::Pointer: {
             Type *base = (*t)->AsPointer()->GetBaseType();
             (*t)->AsPointer()->SetBaseType(resolveType(&base));
+            return *t;
+        }
+        case Type::Slice: {
+            Type *base = (*t)->AsSlice()->GetBaseType();
+            (*t)->AsSlice()->SetBaseType(resolveType(&base));
             return *t;
         }
         case Type::Array: {
@@ -2079,7 +2186,7 @@ Semantic::resolveType(Type **t) {
 
 Type *
 Semantic::getCommonType(Type *lhs, Type *rhs) {
-    if (lhs == rhs) {
+    if (*lhs == *rhs) {
         return lhs;
     }
     if (lhs->IsInteger() && rhs->IsInteger()) {
@@ -2170,7 +2277,6 @@ Semantic::getCommonTypeForOp(Type *lhs, Type *rhs, const Token op, llvm::SMLoc s
         case TkGt:
         case TkLtEq:
         case TkGtEq:
-            // TODO: add suporting of strings
             if (lhs->IsNumber() && rhs->IsNumber()) {
                 return getCommonType(lhs, rhs);
             }
@@ -2217,6 +2323,34 @@ Semantic::implicitlyCast(SemanticResult res, Type **expectedType) {
 
     if (*src == *dst) {
         return res;
+    }
+
+    if (src->IsArray() && dst->IsSlice()) {
+        auto *arr = src->AsArray();
+        auto *slice = dst->AsSlice();
+        if (*arr->GetBaseType() == *slice->GetBaseType()) {
+            HIRNode *arrayPtrNode = nullptr;
+            if (res.Val.IsLValue) {
+                arrayPtrNode = _builder.CreateReference(res.HirNode);
+            }
+            else {
+                arrayPtrNode = _builder.GetContext().CreateNode<HIRVarDeclStmt>("tmp.array", src, res.HirNode, false, Stack);
+            }
+            
+            auto emtpyLoc = llvm::SMLoc();
+            std::vector<std::pair<int, HIRNode *>> fields = {
+                { 0, arrayPtrNode },
+                { 1, _builder.CreateLiteral(Value(Value::Const, ValueData(arr->GetSize()), new SizeType(true, emtpyLoc, emtpyLoc), emtpyLoc, emtpyLoc)) }
+            };
+            std::vector<Type *> sliceFields = {
+                new PointerType(slice->GetBaseType(), llvm::SMLoc(), llvm::SMLoc()),
+                new SizeType(true, emtpyLoc, emtpyLoc)
+            };
+            _builder.CreateStruct("slice." + arr->GetBaseType()->ToString(), sliceFields);
+            auto hirNode = _builder.CreateStructInstance("slice." + arr->GetBaseType()->ToString(), fields);
+            res.Val.Type = dst;
+            return { res.Val, hirNode };
+        }
     }
 
     if (src->IsInteger() && dst->IsInteger()) {

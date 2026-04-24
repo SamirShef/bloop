@@ -10,6 +10,7 @@
 #include <ast/exprs/ve.h>
 #include <ast/exprs/fe.h>
 #include <ast/exprs/de.h>
+#include <ast/exprs/aae.h>
 #include <vector>
 
 namespace bloop {
@@ -55,6 +56,9 @@ private:
 
     Stmt *
     parseDAS(DerefExpr *base);
+
+    Stmt *
+    parseAAS(ArrayAccessExpr *base);
 
     Stmt *
     parseFDS();

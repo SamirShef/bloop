@@ -380,6 +380,9 @@ private:
                 case TypeIdPointer:
                     _types.push_back(new PointerType(_types[record[0]], emptyLoc, emptyLoc));
                     break;
+                case TypeIdSlice:
+                    _types.push_back(new SliceType(_types[record[0]], emptyLoc, emptyLoc));
+                    break;
                 case TypeIdStruct: {
                     Module *baseMod = record[1] < _modules.size() ? _modules[record[1]] : nullptr;
                     _types.push_back(new StructType(NameObj(_strPool[record[0]], emptyLoc, emptyLoc), baseMod, emptyLoc, emptyLoc));

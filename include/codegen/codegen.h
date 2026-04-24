@@ -72,6 +72,9 @@ private:
 
     llvm::Value *
     generateDerefStore(HIRDerefStore *ds);
+
+    llvm::Value *
+    generateArrayStore(HIRArrayStore *as);
     
     void
     declareFDS(HIRFuncDeclStmt *fds);
@@ -137,7 +140,16 @@ private:
     generateNew(HIRNewExpr *ne);
 
     llvm::Value *
+    generateAIE(HIRArrayInstanceExpr *aie);
+
+    llvm::Value *
+    generateAAE(HIRArrayAccessExpr *aae);
+    
+    llvm::Value *
     generateNilCheck(HIRNilCheck *nilCheck);
+
+    llvm::Value *
+    generateBoundsCheck(HIRBoundsCheck *boundsCheck);
     
     llvm::Type *
     getType(Type *type);

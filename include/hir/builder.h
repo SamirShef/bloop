@@ -153,8 +153,8 @@ public:
     }
 
     HIRUnaryExpr *
-    CreateUnary(HIRNode *rhs, HIRUnaryKind op) {
-        return _ctx.CreateNode<HIRUnaryExpr>(rhs, op);
+    CreateUnary(HIRNode *rhs, Type *type, HIRUnaryKind op) {
+        return _ctx.CreateNode<HIRUnaryExpr>(rhs, type, op);
     }
 
     HIRVarExpr *
@@ -228,6 +228,11 @@ public:
         return _ctx.CreateNode<HIRNilCheck>(ptr, pos);
     }
 
+    HIRBoundsCheck *
+    CreateBoundsCheck(HIRNode *len, HIRNode *index, std::string pos) {
+        return _ctx.CreateNode<HIRBoundsCheck>(len, index, pos);
+    }
+
     HIRNewExpr *
     CreateNew(Type *type, HIRNode *expr) {
         return _ctx.CreateNode<HIRNewExpr>(type, expr);
@@ -236,6 +241,23 @@ public:
     HIRDelStmt *
     CreateDel(HIRNode *expr) {
         auto *node = _ctx.CreateNode<HIRDelStmt>(expr);
+        AddToBlock(node);
+        return node;
+    }
+
+    HIRArrayInstanceExpr *
+    CreateArray(Type *arrType, std::vector<HIRNode *> exprs) {
+        return _ctx.CreateNode<HIRArrayInstanceExpr>(arrType, exprs);
+    }
+
+    HIRArrayAccessExpr *
+    CreateArrayAccess(HIRNode *base, Type *baseType, HIRNode *index) {
+        return _ctx.CreateNode<HIRArrayAccessExpr>(base, baseType, index);
+    }
+
+    HIRArrayStore *
+    CreateArrayStore(HIRNode *base, Type *baseType, HIRNode *index, HIRNode *expr) {
+        auto *node = _ctx.CreateNode<HIRArrayStore>(base, baseType, index, expr);
         AddToBlock(node);
         return node;
     }

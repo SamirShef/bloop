@@ -23,6 +23,7 @@ CodeGen::generateNode(HIRNode *node) {
         NODE(HIRNkStructDeclStmt, generateSDS, HIRStructDeclStmt);
         NODE(HIRNkDerefStore, generateDerefStore, HIRDerefStore);
         NODE(HIRNkDelStmt, generateDS, HIRDelStmt);
+        NODE(HIRNkArrayStore, generateArrayStore, HIRArrayStore);
     }
     #undef NODE
 }
@@ -60,6 +61,24 @@ CodeGen::generateLValue(HIRNode *node) {
         case HIRNkDeref: {
             auto deref = static_cast<HIRDeref *>(node);
             return generateExpr(deref->GetBase());
+        }
+        case HIRNkArrayAccessExpr: {
+            auto aae = static_cast<HIRArrayAccessExpr *>(node);
+            llvm::Value *index = generateExpr(aae->GetIndex());
+            llvm::Value *basePtr = generateLValue(aae->GetBase());
+            Type *baseType = aae->GetBaseType();
+            
+            if (aae->GetBaseType()->IsArray()) {
+                llvm::Type *arrType = getType(baseType);
+                return _builder.CreateInBoundsGEP(arrType, basePtr, { _builder.getInt64(0), index }, basePtr->getName() + ".idx." + index->getValueName()->first());
+            } 
+            else {
+                llvm::Type *sliceType = getType(baseType);
+                llvm::Value *dataFieldPtr = _builder.CreateStructGEP(sliceType, basePtr, 0, "slice.ptr.addr");
+                llvm::Value *dataPtr = _builder.CreateLoad(_builder.getPtrTy(), dataFieldPtr, "slice.data.ptr");
+                Type *elementType = baseType->AsSlice()->GetBaseType();
+                return _builder.CreateInBoundsGEP(getType(elementType), dataPtr, index, "slice.element.addr");
+            }
         }
         default:
             return nullptr;
@@ -108,6 +127,7 @@ CodeGen::generateVarStore(HIRVarStore *varStore) {
             auto args = _builder.GetInsertBlock()->getParent()->args();
             auto arg = args.begin() + varStore->GetIndex();
             ptr = _builder.CreateAlloca(arg->getType(), nullptr, arg->getName() + ".alloca");
+            _builder.CreateStore(arg, ptr);
             break;
         }
     }
@@ -125,6 +145,26 @@ llvm::Value *
 CodeGen::generateDerefStore(HIRDerefStore *ds) {
     llvm::Value *ptr = generateExpr(ds->GetPtr());
     llvm::Value *val = generateExpr(ds->GetExpr());
+    return _builder.CreateStore(val, ptr);
+}
+
+llvm::Value *
+CodeGen::generateArrayStore(HIRArrayStore *as) {
+    llvm::Value *index = generateExpr(as->GetIndex());
+    llvm::Value *ptr = nullptr;
+    
+    if (as->GetBaseType()->IsArray()) {
+        llvm::Value *basePtr = generateLValue(as->GetBase());
+        llvm::Type *arrTy = getType(as->GetBaseType());
+        ptr = _builder.CreateInBoundsGEP(arrTy, basePtr, { _builder.getInt64(0), index }, "array.store.gep");
+    }
+    else {
+        llvm::Value *basePtr = generateExpr(as->GetBase());
+        Type *elementType = as->GetBaseType()->AsSlice()->GetBaseType();
+        ptr = _builder.CreateInBoundsGEP(getType(elementType), basePtr, index, "slice.store.gep");
+    }
+    
+    llvm::Value *val = generateExpr(as->GetExpr());
     return _builder.CreateStore(val, ptr);
 }
 
@@ -152,11 +192,17 @@ CodeGen::declareFDS(HIRFuncDeclStmt *fds) {
 
 llvm::Value *
 CodeGen::generateFDS(HIRFuncDeclStmt *fds) {
-    llvm::Function *func = _funcsMap.at(fds->GetName()).Func;
+    Function &funcMeta = _funcsMap.at(fds->GetName());
+    llvm::Function *func = funcMeta.Func;
     
+    llvm::BasicBlock *init = llvm::BasicBlock::Create(_context, "init", func);
+    _builder.SetInsertPoint(init);
     int i = 0;
     for (auto &a : func->args()) {
         a.setName(fds->GetArgs()[i].Name);
+        auto alloca = _builder.CreateAlloca(a.getType(), nullptr, a.getName());
+        _builder.CreateStore(&a, alloca);
+        funcMeta.Locals.push_back(alloca);
         ++i;
     }
 
@@ -167,6 +213,9 @@ CodeGen::generateFDS(HIRFuncDeclStmt *fds) {
     _blockMap.clear();
     for (auto &bb : fds->GetBody()) {
         auto *llvmBB = llvm::BasicBlock::Create(_context, bb->GetName(), func);
+        if (_blockMap.empty()) {
+            _builder.CreateBr(llvmBB);
+        }
         _blockMap[bb] = llvmBB;
     }
 
@@ -266,7 +315,10 @@ CodeGen::generateExpr(HIRNode *expr) {
         NODE(HIRNkRef, generateRef, HIRRef);
         NODE(HIRNkNilExpr, generateNE, HIRNilExpr);
         NODE(HIRNkNewExpr, generateNew, HIRNewExpr);
+        NODE(HIRNkArrayInstanceExpr, generateAIE, HIRArrayInstanceExpr);
         NODE(HIRNkNilCheck, generateNilCheck, HIRNilCheck);
+        NODE(HIRNkBoundsCheck, generateBoundsCheck, HIRBoundsCheck);
+        NODE(HIRNkArrayAccessExpr, generateAAE, HIRArrayAccessExpr);
 
         case HIRNkVarDeclStmt: {
             auto vds = llvm::cast<HIRVarDeclStmt>(expr);
@@ -300,7 +352,7 @@ CodeGen::generateBE(HIRBinaryExpr *be) {
             if (be->GetCommonType()->IsFloating()) {
                 return _builder.CreateFDiv(lhs, rhs, "fdiv.tmp");
             }
-            if (be->GetCommonType()->AsInteger()->IsUnsigned()) {
+            if (be->GetCommonType()->IsInteger() && be->GetCommonType()->AsInteger()->IsUnsigned()) {
                 return _builder.CreateUDiv(lhs, rhs, "udiv.tmp");
             }
             return _builder.CreateSDiv(lhs, rhs, "sdiv.tmp");
@@ -308,7 +360,7 @@ CodeGen::generateBE(HIRBinaryExpr *be) {
             if (be->GetCommonType()->IsFloating()) {
                 return _builder.CreateFRem(lhs, rhs, "frem.tmp");
             }
-            if (be->GetCommonType()->AsInteger()->IsUnsigned()) {
+            if (be->GetCommonType()->IsInteger() && be->GetCommonType()->AsInteger()->IsUnsigned()) {
                 return _builder.CreateURem(lhs, rhs, "urem.tmp");
             }
             return _builder.CreateSRem(lhs, rhs, "srem.tmp");
@@ -326,7 +378,7 @@ CodeGen::generateBE(HIRBinaryExpr *be) {
             if (be->GetCommonType()->IsFloating()) {
                 return _builder.CreateFCmpOGT(lhs, rhs, "fcmpogt.tmp");
             }
-            if (be->GetCommonType()->AsInteger()->IsUnsigned()) {
+            if (be->GetCommonType()->IsInteger() && be->GetCommonType()->AsInteger()->IsUnsigned()) {
                 return _builder.CreateICmpUGT(lhs, rhs, "icmpugt.tmp");
             }
             return _builder.CreateICmpSGT(lhs, rhs, "icmpsgt.tmp");
@@ -334,7 +386,7 @@ CodeGen::generateBE(HIRBinaryExpr *be) {
             if (be->GetCommonType()->IsFloating()) {
                 return _builder.CreateFCmpOGE(lhs, rhs, "fcmpoge.tmp");
             }
-            if (be->GetCommonType()->AsInteger()->IsUnsigned()) {
+            if (be->GetCommonType()->IsInteger() && be->GetCommonType()->AsInteger()->IsUnsigned()) {
                 return _builder.CreateICmpUGE(lhs, rhs, "icmpuge.tmp");
             }
             return _builder.CreateICmpSGE(lhs, rhs, "icmpsge.tmp");
@@ -342,7 +394,7 @@ CodeGen::generateBE(HIRBinaryExpr *be) {
             if (be->GetCommonType()->IsFloating()) {
                 return _builder.CreateFCmpOLT(lhs, rhs, "fcmpolt.tmp");
             }
-            if (be->GetCommonType()->AsInteger()->IsUnsigned()) {
+            if (be->GetCommonType()->IsInteger() && be->GetCommonType()->AsInteger()->IsUnsigned()) {
                 return _builder.CreateICmpULT(lhs, rhs, "icmpult.tmp");
             }
             return _builder.CreateICmpSLT(lhs, rhs, "icmpslt.tmp");
@@ -350,7 +402,7 @@ CodeGen::generateBE(HIRBinaryExpr *be) {
             if (be->GetCommonType()->IsFloating()) {
                 return _builder.CreateFCmpOLE(lhs, rhs, "fcmpole.tmp");
             }
-            if (be->GetCommonType()->AsInteger()->IsUnsigned()) {
+            if (be->GetCommonType()->IsInteger() && be->GetCommonType()->AsInteger()->IsUnsigned()) {
                 return _builder.CreateICmpULE(lhs, rhs, "icmpule.tmp");
             }
             return _builder.CreateICmpSLE(lhs, rhs, "icmpsle.tmp");
@@ -410,6 +462,9 @@ CodeGen::generateUE(HIRUnaryExpr *ue) {
     llvm::Value *val = generateExpr(ue->GetRHS());
     switch (ue->GetOp()) {
         case HIRUkMinus:
+            if (ue->GetType()->IsFloating()) {
+                return _builder.CreateFNeg(val, "fneg.tmp");
+            }
             return _builder.CreateNeg(val, "neg.tmp");
         case HIRUkNot:
             return _builder.CreateNot(val, "not.tmp");
@@ -530,18 +585,65 @@ CodeGen::generateNE(HIRNilExpr *ne) {
 
 llvm::Value *
 CodeGen::generateNew(HIRNewExpr *ne) {
+    auto &dl = _module->getDataLayout();
+    auto *llvmType = getType(ne->GetType());
+    
+    uint64_t headerSize = dl.getTypeAllocSize(llvmType);
+    
     llvm::FunctionType *mallocType = llvm::FunctionType::get(_builder.getPtrTy(), { _builder.getInt64Ty() }, false);
-    auto malloc = _module->getOrInsertFunction("malloc", mallocType);
-    auto dl = _module->getDataLayout();
-    size_t size = dl.getTypeAllocSize(getType(ne->GetType()));
-    llvm::Value *ptr = _builder.CreateCall(malloc, { _builder.getInt64(size) }, "new." + ne->GetType()->ToString());
+    auto mallocFunc = _module->getOrInsertFunction("malloc", mallocType);
+
+    llvm::Value *headerPtr = _builder.CreateCall(mallocFunc, { _builder.getInt64(headerSize) }, "new.header.ptr");
 
     if (ne->GetExpr()) {
-        llvm::Value *val = generateExpr(ne->GetExpr());
-        _builder.CreateStore(val, ptr);
+        if (ne->GetType()->IsSlice()) {
+            llvm::Value *arrayVal = generateExpr(ne->GetExpr());
+            llvm::Type *arrayTy = arrayVal->getType();
+            
+            uint64_t arrayByteSize = dl.getTypeAllocSize(arrayTy);
+            llvm::Value *dataPtr = _builder.CreateCall(mallocFunc, { _builder.getInt64(arrayByteSize) }, "new.slice.data");
+
+            _builder.CreateStore(arrayVal, dataPtr);
+
+            uint64_t arrayLen = arrayTy->getArrayNumElements();
+            llvm::Value *sliceStruct = llvm::Constant::getNullValue(llvmType);
+            sliceStruct = _builder.CreateInsertValue(sliceStruct, dataPtr, 0);
+            sliceStruct = _builder.CreateInsertValue(sliceStruct, _builder.getInt64(arrayLen), 1);
+
+            _builder.CreateStore(sliceStruct, headerPtr);}
+        else {
+            llvm::Value *val = generateExpr(ne->GetExpr());
+            _builder.CreateStore(val, headerPtr);
+        }
     }
     
-    return ptr;
+    return headerPtr;
+}
+
+llvm::Value *
+CodeGen::generateAIE(HIRArrayInstanceExpr *aie) {
+    auto arrType = llvm::ArrayType::get(getType(aie->GetArrType()), aie->GetExprs().size());
+    std::vector<llvm::Constant *> vals;
+    for (auto e : aie->GetExprs()) {
+        vals.push_back(llvm::cast<llvm::Constant>(generateExpr(e)));
+    }
+    llvm::Value *arr = llvm::ConstantArray::get(arrType, vals);
+    return arr;
+}
+
+llvm::Value *
+CodeGen::generateAAE(HIRArrayAccessExpr *aae) {
+    llvm::Value *ptr = generateLValue(aae);
+    
+    Type *elementType = nullptr;
+    if (aae->GetBaseType()->IsArray()) {
+        elementType = aae->GetBaseType()->AsArray()->GetBaseType();
+    }
+    else {
+        elementType = aae->GetBaseType()->AsSlice()->GetBaseType();
+    }
+    
+    return _builder.CreateLoad(getType(elementType), ptr);
 }
 
 llvm::Value *
@@ -570,12 +672,45 @@ CodeGen::generateNilCheck(HIRNilCheck *nilCheck) {
 
     _builder.CreateCall(putsFunc, { panicMsg });
     _builder.CreateCall(exitFunc, { _builder.getInt32(1) });
-    
     _builder.CreateUnreachable();
 
     _builder.SetInsertPoint(okBB);
 
     return ptrVal;
+}
+
+llvm::Value *
+CodeGen::generateBoundsCheck(HIRBoundsCheck *boundsCheck) {
+    llvm::Value *index = generateExpr(boundsCheck->GetIndex());
+    llvm::Value *len = generateExpr(boundsCheck->GetLength());
+    
+    llvm::Function *func = _builder.GetInsertBlock()->getParent();
+    llvm::BasicBlock *panicBB = llvm::BasicBlock::Create(_context, "bounds.panic", func);
+    llvm::BasicBlock *okBB = llvm::BasicBlock::Create(_context, "bounds.ok", func);
+
+    llvm::Value *inBounds = _builder.CreateICmpULT(index, len, "is.in.bounds");
+    _builder.CreateCondBr(inBounds, okBB, panicBB);
+
+    _builder.SetInsertPoint(panicBB);
+
+    llvm::FunctionType *putsType = llvm::FunctionType::get(_builder.getInt32Ty(), { _builder.getPtrTy() }, false);
+    llvm::FunctionCallee putsFunc = _module->getOrInsertFunction("puts", putsType);
+
+    llvm::FunctionType *exitType = llvm::FunctionType::get(_builder.getVoidTy(), { _builder.getInt32Ty() }, false);
+    llvm::FunctionCallee exitFunc = _module->getOrInsertFunction("exit", exitType);
+
+    llvm::Value *panicMsg = _builder.CreateGlobalStringPtr(
+        "\e[1;31mpanic\e[0m: runtime error: index out of bounds at " + boundsCheck->GetPos(),
+        "panic.bounds.msg"
+    );
+
+    _builder.CreateCall(putsFunc, { panicMsg });
+    _builder.CreateCall(exitFunc, { _builder.getInt32(1) });
+    _builder.CreateUnreachable();
+
+    _builder.SetInsertPoint(okBB);
+
+    return index;
 }
 
 llvm::Type *
@@ -612,8 +747,16 @@ CodeGen::getType(Type *type) {
         case Type::Pointer: {
             return _builder.getPtrTy();
         }
+        case Type::Slice: {
+            std::string name = "slice." + type->AsSlice()->GetBaseType()->ToString();
+            if (auto *s = llvm::StructType::getTypeByName(_context, name)) {
+                return s;
+            }
+            return llvm::StructType::create(_context, { _builder.getPtrTy(), _builder.getInt64Ty() }, name);
+        }
         case Type::Array: {
-            // TODO: implement
+            auto *a = type->AsArray();
+            return llvm::ArrayType::get(getType(a->GetBaseType()), a->GetSize());
         }
         case Type::Struct: {
             auto *s = type->AsStruct();

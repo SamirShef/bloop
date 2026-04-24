@@ -6,10 +6,11 @@ namespace bloop {
 
 class ArrayType : public Type {
     Type *_base;
-    Expr *_size; // requires inference if nullptr
+    Expr *_sizeExpr;
+    int64_t _size = 0;
 
 public:
-    explicit ArrayType(Type *t, Expr *si, llvm::SMLoc s, llvm::SMLoc e) : _base(t), _size(si), Type(Type::Array, s, e) {}
+    explicit ArrayType(Type *t, Expr *si, llvm::SMLoc s, llvm::SMLoc e) : _base(t), _sizeExpr(si), Type(Type::Array, s, e) {}
 
     CLASSOF(Array)
 
@@ -23,8 +24,19 @@ public:
         _base = b;
     }
 
-    Expr *GetSize() const {
+    Expr *
+    GetSizeExpr() const {
+        return _sizeExpr;
+    }
+
+    int64_t
+    GetSize() const {
         return _size;
+    }
+
+    void
+    SetSize(int64_t s) {
+        _size = s;
     }
 
     std::string

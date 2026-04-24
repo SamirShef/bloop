@@ -16,6 +16,7 @@ class FloatingType;
 class TupleType;
 class StringType;
 class PointerType;
+class SliceType;
 class ArrayType;
 class StructType;
 class TraitType;
@@ -36,6 +37,7 @@ public:
         String,
         Pointer,
         Array,
+        Slice,
         Struct,
         Trait,
         ModulePtr,
@@ -76,7 +78,7 @@ public:
 
     constexpr bool
     IsNumber() const {
-        return Is(Integer) || Is(Floating);
+        return Is(Integer) || Is(Floating) || Is(Size);
     }
 
     IS(IsChar, Char)
@@ -96,6 +98,9 @@ public:
 
     IS(IsPointer, Pointer)
     AS(AsPointer, PointerType)
+
+    IS(IsSlice, Slice)
+    AS(AsSlice, SliceType)
 
     IS(IsArray, Array)
     AS(AsArray, ArrayType)

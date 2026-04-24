@@ -12,10 +12,11 @@ enum HIRUnaryKind : uint8_t {
     
 class HIRUnaryExpr : public HIRNode {
     HIRNode *_rhs;
+    Type *_type;
     HIRUnaryKind _op;
 
 public:
-    explicit HIRUnaryExpr(HIRNode *r, HIRUnaryKind o) : _rhs(r), _op(o), HIRNode(HIRNkUnaryExpr) {}
+    explicit HIRUnaryExpr(HIRNode *r, Type *t, HIRUnaryKind o) : _rhs(r), _type(t), _op(o), HIRNode(HIRNkUnaryExpr) {}
 
     static constexpr bool
     classof(const HIRNode *node) {
@@ -25,6 +26,11 @@ public:
     HIRNode *
     GetRHS() const {
         return _rhs;
+    }
+
+    Type *
+    GetType() const {
+        return _type;
     }
 
     HIRUnaryKind

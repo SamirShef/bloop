@@ -1,23 +1,24 @@
 #pragma once
+#include <utils/types/type.h>
 #include <ast/expr.h>
 
 namespace bloop {
 
 class NewExpr : public Expr {
-    Expr *_typeExpr;
+    Type *_type;
     Expr *_expr;
 
 public:
-    explicit NewExpr(Expr *te, Expr *e, llvm::SMLoc end) : _typeExpr(te), _expr(e), Expr(NkNewExpr, te->GetStartLoc(), end) {}
+    explicit NewExpr(Type *t, Expr *e, llvm::SMLoc s, llvm::SMLoc end) : _type(t), _expr(e), Expr(NkNewExpr, s, end) {}
 
     constexpr static bool
     classof(const Node *node) {
         return node->GetKind() == NkNewExpr;
     }
 
-    Expr *
-    GetTypeExpr() const {
-        return _typeExpr;
+    Type *&
+    GetType() {
+        return _type;
     }
 
     Expr *

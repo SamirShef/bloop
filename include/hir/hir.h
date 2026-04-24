@@ -18,5 +18,9 @@
 #include <hir/ref.h>
 #include <hir/ne.h>
 #include <hir/nilCheck.h>
+#include <hir/boundsCheck.h>
 #include <hir/new.h>
 #include <hir/del.h>
+#include <hir/aie.h>
+#include <hir/aae.h>
+#include <hir/as.h>
