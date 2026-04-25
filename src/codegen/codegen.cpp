@@ -195,14 +195,18 @@ CodeGen::generateFDS(HIRFuncDeclStmt *fds) {
     Function &funcMeta = _funcsMap.at(fds->GetName());
     llvm::Function *func = funcMeta.Func;
     
-    llvm::BasicBlock *init = llvm::BasicBlock::Create(_context, "init", func);
-    _builder.SetInsertPoint(init);
+    if (!fds->IsDeclaration()) {
+        llvm::BasicBlock *init = llvm::BasicBlock::Create(_context, "init", func);
+        _builder.SetInsertPoint(init);
+    }
     int i = 0;
     for (auto &a : func->args()) {
         a.setName(fds->GetArgs()[i].Name);
-        auto alloca = _builder.CreateAlloca(a.getType(), nullptr, a.getName());
-        _builder.CreateStore(&a, alloca);
-        funcMeta.Locals.push_back(alloca);
+        if (!fds->IsDeclaration()) {
+            auto alloca = _builder.CreateAlloca(a.getType(), nullptr, a.getName());
+            _builder.CreateStore(&a, alloca);
+            funcMeta.Locals.push_back(alloca);
+        }
         ++i;
     }
 

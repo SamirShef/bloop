@@ -623,11 +623,13 @@ Semantic::analyzeUS(UsingStmt *us) {
         for (auto &candidates : s.Methods) {
             for (auto &c : candidates.Candidates) {
                 std::vector<HIRFuncArgument> hirArgs;
+                std::string mangledName = s.GetMangledName() + "." + c.Func.Name.Name;
                 for (int i = 0; i < c.Func.Args.size(); ++i) {
                     auto &a = c.Func.Args[i];
                     hirArgs.push_back(HIRFuncArgument(a.Name.Name, a.Type, a.DefaultVal ? analyzeExpr(a.DefaultVal).HirNode : nullptr));
+                    mangledName += a.Type->ToString();
                 }
-                _builder.CreateFunc(s.GetMangledName() + "." + c.Func.Name.Name, c.Func.RetType, hirArgs, false, true);
+                _builder.CreateFunc(mangledName, c.Func.RetType, hirArgs, false, true);
             }
         }
     }
@@ -1520,7 +1522,11 @@ Semantic::analyzeVE(VarExpr *ve) {
                 return { it->second.Val, _builder.CreateLiteral(it->second.Val) };
             }
             HIRNode *veNode = _builder.CreateLoadVar(it->second.Storage, it->second.Index);
-            return { Value(Value::Unknown, ValueData(), it->second.Type, ve->GetStartLoc(), ve->GetEndLoc(), true), veNode };
+            auto kind = Value::Unknown;
+            if (it->second.Val.Kind == Value::This) {
+                kind = it->second.Val.Kind;
+            }
+            return { Value(kind, ValueData(), it->second.Type, ve->GetStartLoc(), ve->GetEndLoc(), true), veNode };
         }
         varsCopy.pop();
     }
