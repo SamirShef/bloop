@@ -1410,6 +1410,34 @@ Semantic::analyzeBE(BinaryExpr *be) {
 
 Semantic::SemanticResult
 Semantic::analyzeLE(LiteralExpr *le) {
+    auto val = le->GetVal();
+    if (val.Type->IsString()) {
+        const std::string &str = std::get<std::string>(val.Data);
+        int64_t len = str.length();
+
+        auto *u8Type = new IntegerType(8, true, val.Start, val.End);
+        auto *lenType = new IntegerType(64, true, val.Start, val.End);
+
+        auto *sliceType = new SliceType(u8Type, val.Start, val.End);
+
+        HIRNode *ptrNode = _builder.CreateLiteral(val);
+
+        Value lenVal(Value::Const, (int64_t)len, lenType, val.Start, val.End);
+        HIRNode *lenNode = _builder.CreateLiteral(lenVal);
+
+        std::vector<std::pair<int, HIRNode *>> fields = {
+             { 0, ptrNode },
+             { 1, lenNode }
+        };
+        std::vector<Type *> sliceFields = {
+            new PointerType(u8Type, llvm::SMLoc(), llvm::SMLoc()),
+            new SizeType(true, llvm::SMLoc(), llvm::SMLoc())
+        };
+        _builder.CreateStruct("slice." + u8Type->ToString(), sliceFields);
+        HIRNode *sliceNode = _builder.CreateStructInstance("slice." + u8Type->ToString(), fields);
+
+        return SemanticResult(Value(Value::Const, val.Data, sliceType, val.Start, val.End), sliceNode);
+    }
     return { le->GetVal(), _builder.CreateLiteral(le->GetVal()) };
 }
 
